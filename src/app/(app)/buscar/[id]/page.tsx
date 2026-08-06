@@ -133,9 +133,16 @@ export default async function ResultadosPage({ params }: { params: Promise<{ id:
           rotulo="Candidatos"
           valor={numero(ativos.length)}
           detalhe={
-            busca.descartadosListagem > 0
-              ? `${numero(busca.totalBruto)} páginas lidas · ${numero(busca.descartadosListagem)} eram lista do portal`
-              : `${numero(busca.totalBruto)} anúncios lidos`
+            [
+              `${numero(busca.totalBruto)} páginas lidas`,
+              busca.descartadosListagem > 0
+                ? `${numero(busca.descartadosListagem)} eram lista do portal`
+                : null,
+              busca.descartadosArea > 0 ? `${numero(busca.descartadosArea)} sem área no texto` : null,
+              busca.descartadosZona > 0 ? `${numero(busca.descartadosZona)} fora da zona` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")
           }
         />
         <Metrica rotulo="Com área identificada" valor={numero(comArea.length)} detalhe={`${m2(areaTotal)} somados`} />

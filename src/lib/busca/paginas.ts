@@ -51,13 +51,17 @@ const TITULOS_DE_LISTAGEM = [
   /\bresultados?\s+(?:da|de)\s+(?:busca|pesquisa)\b/i,
 ];
 
-/** Segmentos que, sozinhos, já identificam a raiz de uma busca no portal. */
+/**
+ * Segmentos que, sozinhos, já identificam a raiz de uma busca no portal.
+ *
+ * "venda", "comprar" e "aluguel" ficaram de fora de propósito, mesmo sendo
+ * comuns em página de listagem: eles são igualmente comuns em URL de anúncio
+ * individual (`/imovel/venda-terreno-...`), e derrubá-los por essa palavra
+ * jogava anúncio bom fora. Quem separa esses casos é o título no plural, que
+ * é evidência muito mais firme — e, na falta dela, o resultado fica
+ * indefinido e é mantido.
+ */
 const SEGMENTOS_DE_LISTAGEM = new Set([
-  "venda",
-  "vendas",
-  "aluguel",
-  "alugar",
-  "comprar",
   "terrenos",
   "lotes",
   "imoveis",

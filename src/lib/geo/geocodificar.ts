@@ -78,19 +78,33 @@ async function consultarProvedor(consulta: string): Promise<Coordenada | null> {
   return { latitude, longitude, enderecoNormalizado: primeiro.display_name ?? null };
 }
 
-export async function geocodificar(consultaBruta: string): Promise<Coordenada | null> {
+export interface RespostaGeocodificacao {
+  ponto: Coordenada | null;
+  /**
+   * Verdadeiro quando a resposta saiu do banco, sem tocar a rede.
+   *
+   * Quem chama precisa saber: consulta em cache custa milissegundos, consulta
+   * nova custa 1,1 s de fila. Gastar a mesma cota nas duas fazia a segunda
+   * busca da mesma região confirmar tão poucas zonas quanto a primeira.
+   */
+  doCache: boolean;
+}
+
+export async function geocodificar(consultaBruta: string): Promise<RespostaGeocodificacao> {
   const consulta = consultaBruta.trim().replace(/\s+/g, " ").slice(0, 300);
-  if (consulta.length < 6) return null;
+  if (consulta.length < 6) return { ponto: null, doCache: true };
 
   const emCache = await prisma.geocodificacao.findUnique({ where: { consulta } });
   if (emCache) {
-    return emCache.latitude != null && emCache.longitude != null
-      ? {
-          latitude: emCache.latitude,
-          longitude: emCache.longitude,
-          enderecoNormalizado: emCache.enderecoNormalizado,
-        }
-      : null;
+    const ponto =
+      emCache.latitude != null && emCache.longitude != null
+        ? {
+            latitude: emCache.latitude,
+            longitude: emCache.longitude,
+            enderecoNormalizado: emCache.enderecoNormalizado,
+          }
+        : null;
+    return { ponto, doCache: true };
   }
 
   let resultado: Coordenada | null = null;
@@ -98,7 +112,7 @@ export async function geocodificar(consultaBruta: string): Promise<Coordenada | 
     resultado = await enfileirar(() => consultarProvedor(consulta));
   } catch (erro) {
     console.error("Geocodificação falhou:", erro);
-    return null; // falha de rede não vira cache negativo
+    return { ponto: null, doCache: false }; // falha de rede não vira cache negativo
   }
 
   await prisma.geocodificacao
@@ -112,7 +126,7 @@ export async function geocodificar(consultaBruta: string): Promise<Coordenada | 
     })
     .catch(() => undefined);
 
-  return resultado;
+  return { ponto: resultado, doCache: false };
 }
 
 /** Monta a string de busca a partir do que foi possível extrair do anúncio. */

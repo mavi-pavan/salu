@@ -133,3 +133,27 @@ describe("indefinido", () => {
     expect(classificarPagina("Terreno à venda", "não é uma url")).toBe("indefinido");
   });
 });
+
+describe("não descartar anúncio bom", () => {
+  it('mantém anúncio individual cuja URL tem "venda" no caminho', () => {
+    // O erro que isto trava: derrubar por causa da palavra "venda" um anúncio
+    // que era exatamente o que a busca procurava.
+    const casos = [
+      "https://www.lopes.com.br/imovel/venda/sp/sao-paulo/terreno/vila-mariana-terreno",
+      "https://imobiliaria.com.br/venda/terreno-vila-mariana",
+      "https://portal.com.br/comprar/terreno-na-saude",
+    ];
+    for (const url of casos) {
+      expect(classificarPagina("Terreno à venda, 800 m² na Vila Mariana", url)).not.toBe("listagem");
+    }
+  });
+
+  it("ainda derruba a listagem quando o título entrega o plural", () => {
+    expect(
+      classificarPagina(
+        "Terrenos à venda em Vila Mariana | Lopes",
+        "https://www.lopes.com.br/venda/sp/sao-paulo/terreno",
+      ),
+    ).toBe("listagem");
+  });
+});

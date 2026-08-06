@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { buscarNaWeb, ehDemo, provedorConfigurado, type ItemWeb } from "@/lib/busca/provedores";
 import { dominio, extrairTudo, normalizarZonaTexto } from "@/lib/busca/extrair";
 import { classificarPagina } from "@/lib/busca/paginas";
+import { ordenarPorPrioridade } from "@/lib/busca/ordenacao";
 import { normalizar } from "@/lib/busca/regioes";
 import {
   MAX_CONSULTAS,
@@ -201,22 +202,52 @@ export async function executarBusca(
     longitude: number | null;
   }> = [];
 
+  let consultasDeRede = 0;
   let geocodificados = 0;
   let geocodificadosComSucesso = 0;
+  let descartadosArea = 0;
 
+  // Primeiro separa quem passa nos filtros baratos, depois ordena. O buscador
+  // devolve os mesmos anúncios em ordem diferente a cada execução, e com a
+  // ordem dele o orçamento de geocodificação caía em um subconjunto diferente
+  // a cada busca — o que fazia os MESMOS filtros devolverem resultados
+  // diferentes, sem nada ter mudado no mundo.
+  const triados: Array<{ item: ItemWeb; dados: ReturnType<typeof extrairTudo> }> = [];
   for (const item of unicos) {
     const dados = extrairTudo(item.titulo, item.trecho);
 
-    if (!passaArea(dados.areaM2, params)) continue;
+    if (!passaArea(dados.areaM2, params)) {
+      if (dados.areaM2 == null) descartadosArea += 1;
+      continue;
+    }
     if (!passaPreco(dados.precoBRL, params)) continue;
+    triados.push({ item, dados });
+  }
 
+  // Ordem total e determinística — ver src/lib/busca/ordenacao.ts para o
+  // sintoma que isto resolve.
+  const emOrdem = ordenarPorPrioridade(
+    triados.map((t) => ({
+      ...t,
+      areaM2: t.dados.areaM2,
+      precoBRL: t.dados.precoBRL,
+      chave: chaveDeUrl(t.item.url),
+    })),
+  );
+
+  for (const { item, dados } of emOrdem) {
     let latitude: number | null = null;
     let longitude: number | null = null;
 
     const consultaGeo = consultaDeEndereco({ endereco: dados.endereco, bairro: dados.bairro });
-    if (consultaGeo && geocodificados < LIMITE_GEOCODE) {
+    if (consultaGeo && consultasDeRede < LIMITE_GEOCODE) {
+      const { ponto, doCache } = await geocodificar(consultaGeo);
+      // Só chamada de rede consome o orçamento: o limite existe por causa do
+      // 1,1 s de fila do Nominatim, e leitura de cache não paga esse preço.
+      // Contando as duas, repetir uma busca confirmava tão poucas zonas quanto
+      // a primeira, mesmo com tudo já em cache.
+      if (!doCache) consultasDeRede += 1;
       geocodificados += 1;
-      const ponto = await geocodificar(consultaGeo);
       if (ponto) {
         geocodificadosComSucesso += 1;
         latitude = ponto.latitude;
@@ -374,6 +405,7 @@ export async function executarBusca(
       totalBruto: brutos.length,
       totalAceito: aceitos.length,
       descartadosListagem,
+      descartadosArea,
       descartadosZona,
       // Ordenado do mais frequente para o menos: "ZM (3), ZC (2)".
       zonasReprovadas: [...zonasReprovadas.entries()]

@@ -414,6 +414,10 @@ model Busca {
   /// Páginas de busca do portal ("1.234 terrenos à venda") descartadas por não
   /// serem anúncio de um lote.
   descartadosListagem Int  @default(0)
+  /// Anúncios descartados por não trazerem a área no texto, com a opção
+  /// "descartar sem área" ligada. Junto dos outros dois, fecha a conta entre
+  /// páginas lidas e candidatos — sem isso, "só achou 2" não tem explicação.
+  descartadosArea     Int  @default(0)
   erro         String?
   createdAt    DateTime @default(now())
 
