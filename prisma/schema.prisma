@@ -1,0 +1,473 @@
+// Prospecção ZEU — schema do banco
+//
+// Nota sobre tipos numéricos: usamos Float (double precision) em vez de Decimal.
+// Todos os números aqui são *estimativas de prospecção* (área, VGV, custo de obra,
+// outorga, score) e nenhum deles é usado como registro contábil ou financeiro.
+// Float evita a classe de bugs de serialização de `Prisma.Decimal` na fronteira
+// Server Component -> Client Component e mantém os cálculos legíveis.
+// Se um dia houver contas a pagar/receber de verdade, migrar esses campos para
+// Decimal(14,2) e converter para string na camada de DTO.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // Neon: DATABASE_URL usa o endpoint com pool (-pooler), DIRECT_URL usa o direto.
+  // Em Postgres local, os dois apontam para a mesma string.
+  directUrl = env("DIRECT_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Auth.js (NextAuth) — modelos exigidos pelo @auth/prisma-adapter
+// ---------------------------------------------------------------------------
+
+enum Papel {
+  ADMIN // gerencia membros, pesos de pontuação e premissas
+  MEMBRO // cadastra e edita terrenos
+  LEITOR // somente leitura
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  papel         Papel     @default(MEMBRO)
+  ativo         Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts             Account[]
+  sessions             Session[]
+  terrenosCriados      Terreno[]          @relation("TerrenoCriadoPor")
+  terrenosResponsavel  Terreno[]          @relation("TerrenoResponsavel")
+  notas                Nota[]
+  documentos           Documento[]
+  itensResponsavel     ItemDueDiligence[] @relation("ItemResponsavel")
+  eventos              Evento[]
+  convitesEnviados     Convite[]          @relation("ConviteAutor")
+  buscas               Busca[]            @relation("BuscaAutor")
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@id([identifier, token])
+}
+
+/// Lista de e-mails autorizados a entrar. Sem convite (ou sem estar em
+/// ADMIN_EMAILS), o magic link não é sequer enviado.
+model Convite {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  papel     Papel    @default(MEMBRO)
+  autorId   String?
+  createdAt DateTime @default(now())
+
+  autor User? @relation("ConviteAutor", fields: [autorId], references: [id], onDelete: SetNull)
+}
+
+// ---------------------------------------------------------------------------
+// Domínio: terrenos
+// ---------------------------------------------------------------------------
+
+/// Zonas da LPUOS (Lei 16.402/2016 e alterações). O foco do app é a família ZEU,
+/// as demais existem para registrar terrenos descartados por zoneamento.
+enum Zona {
+  ZEU // Eixo de Estruturação da Transformação Urbana
+  ZEUa // ZEU ambiental
+  ZEUP // ZEU previsto (eixo ainda não implantado)
+  ZEUPa // ZEU previsto ambiental
+  ZEM // Eixo de Estruturação da Transformação Metropolitana
+  ZEMP // ZEM previsto
+  ZC // Zona de Centralidade
+  ZM // Zona Mista
+  ZR // Zona Residencial
+  ZEIS // Zona Especial de Interesse Social
+  OUTRA
+  A_VERIFICAR
+}
+
+enum StatusPipeline {
+  NOVO
+  EM_ANALISE
+  VISITADO
+  PROPOSTA_ENVIADA
+  EM_NEGOCIACAO
+  DUE_DILIGENCE
+  CONTRATADO
+  DESCARTADO
+  PERDIDO
+}
+
+enum Topografia {
+  PLANA
+  ACLIVE_LEVE
+  DECLIVE_LEVE
+  ACLIVE_ACENTUADO
+  DECLIVE_ACENTUADO
+  IRREGULAR
+  NAO_INFORMADO
+}
+
+enum Ocupacao {
+  VAZIO
+  EDIFICACAO_SIMPLES
+  EDIFICACAO_RELEVANTE
+  ALUGADO
+  OCUPACAO_IRREGULAR
+  NAO_INFORMADO
+}
+
+enum SituacaoDocumental {
+  REGULAR
+  PENDENCIA_SIMPLES
+  ESPOLIO_INVENTARIO
+  LITIGIO_USUCAPIAO
+  NAO_INFORMADO
+}
+
+enum OrigemLead {
+  CORRETOR
+  PROPRIETARIO
+  PORTAL
+  PROSPECCAO_ATIVA
+  INDICACAO
+  OUTRA
+}
+
+enum Motivacao {
+  ALTA
+  MEDIA
+  BAIXA
+  NAO_INFORMADO
+}
+
+model Terreno {
+  id      String @id @default(cuid())
+  codigo  String @unique /// TER-0001, sequencial e estável para conversas
+  apelido String /// nome interno curto: "Esquina Vergueiro x Domingos de Morais"
+
+  // --- localização ---
+  logradouro      String
+  numero          String?
+  complemento     String?
+  bairro          String?
+  distrito        String?
+  cep             String?
+  cidade          String  @default("São Paulo")
+  uf              String  @default("SP")
+  latitude        Float?
+  longitude       Float?
+  sqlContribuinte String? /// nº do contribuinte / SQL (setor-quadra-lote) do IPTU
+
+  // --- urbanístico ---
+  zona           Zona    @default(A_VERIFICAR)
+  zonaObservacao String?
+  /// Sobrescrevem os padrões da zona (lib/zeu.ts) quando preenchidos.
+  caBasico       Float?
+  caMaximo       Float?
+
+  // --- físico ---
+  areaTerreno      Float /// m²
+  testada          Float? /// m
+  profundidade     Float? /// m
+  numeroLotes      Int        @default(1)
+  numeroMatriculas Int        @default(1)
+  topografia       Topografia @default(NAO_INFORMADO)
+  ocupacao         Ocupacao   @default(NAO_INFORMADO)
+
+  // --- transporte (o que define o eixo) ---
+  estacaoProxima    String?
+  linhaTransporte   String?
+  distanciaEstacaoM Int?
+
+  // --- comercial ---
+  precoPedido       Float? /// R$ total pedido
+  valorVenalM2      Float? /// R$/m² do Cadastro de Valor de Terreno (Quadro 14 do PDE), base da outorga
+  aceitaPermuta     Boolean    @default(false)
+  percentualPermuta Float?
+  origem            OrigemLead @default(OUTRA)
+  motivacaoVendedor Motivacao  @default(NAO_INFORMADO)
+  contatoNome       String?
+  contatoTelefone   String?
+  contatoEmail      String?
+
+  // --- documental ---
+  situacaoDocumental SituacaoDocumental @default(NAO_INFORMADO)
+
+  // --- restrições (cada flag entra na pontuação e vira alerta) ---
+  tombado                Boolean @default(false)
+  zepecEntorno           Boolean @default(false)
+  areaContaminada        Boolean @default(false)
+  melhoramentoViario     Boolean @default(false)
+  areaPreservacao        Boolean @default(false) /// APP, córrego, nascente
+  servidao               Boolean @default(false)
+  restricaoAeroportuaria Boolean @default(false)
+  restricoesObservacao   String?
+
+  // --- pipeline ---
+  status        StatusPipeline @default(NOVO)
+  responsavelId String?
+  criadoPorId   String
+
+  // --- cache de pontuação (recalculado a cada gravação) ---
+  scoreTotal    Float?
+  scoreCobertura Float? /// % dos critérios com dado preenchido
+  scoreDetalhe  Json?
+
+  /// Premissas de viabilidade específicas deste terreno. Null = usa o padrão global.
+  premissas Json?
+
+  observacoes String?
+  arquivado   Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  criadoPor   User               @relation("TerrenoCriadoPor", fields: [criadoPorId], references: [id])
+  responsavel User?              @relation("TerrenoResponsavel", fields: [responsavelId], references: [id], onDelete: SetNull)
+  itensDD     ItemDueDiligence[]
+  notas       Nota[]
+  documentos  Documento[]
+  eventos     Evento[]
+
+  @@index([status])
+  @@index([zona])
+  @@index([scoreTotal])
+  @@index([arquivado, status])
+}
+
+// ---------------------------------------------------------------------------
+// Due diligence
+// ---------------------------------------------------------------------------
+
+enum CategoriaDD {
+  DOCUMENTAL
+  VENDEDOR
+  URBANISTICO
+  AMBIENTAL
+  INFRAESTRUTURA
+  COMERCIAL
+  FINANCEIRO
+}
+
+enum StatusItemDD {
+  PENDENTE
+  EM_ANDAMENTO
+  OK
+  PROBLEMA
+  NAO_APLICAVEL
+}
+
+model ItemDueDiligence {
+  id            String       @id @default(cuid())
+  terrenoId     String
+  chave         String /// chave estável vinda do template (lib/due-diligence.ts)
+  categoria     CategoriaDD
+  titulo        String
+  descricao     String?
+  critico       Boolean      @default(false) /// item que sozinho derruba o negócio
+  status        StatusItemDD @default(PENDENTE)
+  responsavelId String?
+  prazo         DateTime?
+  observacao    String?
+  ordem         Int          @default(0)
+  concluidoEm   DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  terreno     Terreno @relation(fields: [terrenoId], references: [id], onDelete: Cascade)
+  responsavel User?   @relation("ItemResponsavel", fields: [responsavelId], references: [id], onDelete: SetNull)
+
+  @@unique([terrenoId, chave])
+  @@index([terrenoId, categoria])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Colaboração
+// ---------------------------------------------------------------------------
+
+enum TipoNota {
+  NOTA
+  VISITA
+  LIGACAO
+  REUNIAO
+  PROPOSTA
+}
+
+model Nota {
+  id        String   @id @default(cuid())
+  terrenoId String
+  autorId   String
+  tipo      TipoNota @default(NOTA)
+  corpo     String
+  createdAt DateTime @default(now())
+
+  terreno Terreno @relation(fields: [terrenoId], references: [id], onDelete: Cascade)
+  autor   User    @relation(fields: [autorId], references: [id])
+
+  @@index([terrenoId, createdAt])
+}
+
+/// Documentos ficam como link (Drive, Dropbox, portal da prefeitura).
+/// Ver README para trocar por upload real com Vercel Blob / S3.
+model Documento {
+  id            String       @id @default(cuid())
+  terrenoId     String
+  nome          String
+  url           String
+  categoria     CategoriaDD?
+  adicionadoPorId String
+  createdAt     DateTime     @default(now())
+
+  terreno       Terreno @relation(fields: [terrenoId], references: [id], onDelete: Cascade)
+  adicionadoPor User    @relation(fields: [adicionadoPorId], references: [id])
+
+  @@index([terrenoId])
+}
+
+/// Trilha de auditoria: quem mudou o quê. Time pequeno, mas decisão de compra
+/// de terreno é cara — vale saber quem mexeu no preço e quando.
+model Evento {
+  id        String   @id @default(cuid())
+  terrenoId String?
+  usuarioId String?
+  acao      String
+  detalhe   Json?
+  createdAt DateTime @default(now())
+
+  terreno Terreno? @relation(fields: [terrenoId], references: [id], onDelete: Cascade)
+  usuario User?    @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+
+  @@index([terrenoId, createdAt])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Prospecção automática: busca de anúncios na internet
+// ---------------------------------------------------------------------------
+
+/// Uma execução de busca. Guardar a busca inteira (e não só os resultados)
+/// permite repetir o mesmo filtro depois e comparar o que apareceu de novo.
+model Busca {
+  id           String   @id @default(cuid())
+  criadoPorId  String
+  zonas        Zona[]
+  areaMin      Float?
+  areaMax      Float?
+  precoMax     Float?
+  regioes      String[]
+  termosExtras String?
+  provedor     String
+  consultas    String[] /// as queries realmente disparadas, para auditar o resultado
+  totalBruto   Int      @default(0) /// itens retornados pelo provedor
+  totalAceito  Int      @default(0) /// itens que passaram nos filtros
+  erro         String?
+  createdAt    DateTime @default(now())
+
+  criadoPor  User             @relation("BuscaAutor", fields: [criadoPorId], references: [id], onDelete: Cascade)
+  resultados ResultadoBusca[]
+
+  @@index([createdAt])
+}
+
+enum OrigemZona {
+  GEOJSON /// point-in-polygon na camada oficial de zoneamento
+  TEXTO /// a própria página do anúncio menciona a zona
+  PRESUMIDA /// heurística por região/eixo
+  DESCONHECIDA
+}
+
+model ResultadoBusca {
+  id      String  @id @default(cuid())
+  buscaId String
+  titulo  String
+  url     String
+  fonte   String /// domínio do anúncio
+  trecho  String?
+
+  areaM2   Float?
+  precoBRL Float?
+  endereco String?
+  bairro   String?
+
+  latitude  Float?
+  longitude Float?
+
+  zonaDetectada Zona?
+  origemZona    OrigemZona @default(DESCONHECIDA)
+  /// 0 a 1: quanto do que interessa (área, preço, zona) foi possível extrair.
+  confianca     Float      @default(0)
+
+  descartado Boolean  @default(false)
+  terrenoId  String? /// preenchido quando o resultado vira terreno no funil
+  createdAt  DateTime @default(now())
+
+  busca Busca @relation(fields: [buscaId], references: [id], onDelete: Cascade)
+
+  @@unique([buscaId, url])
+  @@index([buscaId, descartado])
+}
+
+/// Cache de geocodificação. O Nominatim pede no máximo 1 req/s — sem cache,
+/// repetir uma busca queimaria a cota à toa.
+model Geocodificacao {
+  consulta            String   @id
+  latitude            Float?
+  longitude           Float?
+  enderecoNormalizado String?
+  createdAt           DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Configuração global (singleton)
+// ---------------------------------------------------------------------------
+
+model Configuracao {
+  id            String   @id @default("global")
+  pesos         Json /// pesos por critério de pontuação
+  premissas     Json /// premissas padrão de viabilidade
+  atualizadoEm  DateTime @updatedAt
+  atualizadoPor String?
+}
