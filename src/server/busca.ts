@@ -302,6 +302,16 @@ export function precoPorPotencialDoResultado(r: {
   return potencial > 0 ? Math.round((r.precoBRL / potencial) * 100) / 100 : null;
 }
 
+/**
+ * Quando a consulta roda sem o filtro de portais, entra resultado de todo tipo
+ * de site. Saber a procedência muda a leitura: anúncio de portal tem área e
+ * preço padronizados; página avulsa costuma ser matéria, blog ou listagem.
+ */
+export function ehPortalConhecido(fonte: string): boolean {
+  const alvo = fonte.toLowerCase();
+  return portais().some((p) => alvo === p || alvo.endsWith(`.${p}`));
+}
+
 export function estadoDaBusca() {
   return {
     provedor: provedorConfigurado(),

@@ -6,6 +6,7 @@ import { exigirUsuario, podeEditar } from "@/lib/authz";
 import { brl, brlCompacto, dataHora, m2, numero, pct } from "@/lib/format";
 import { linkGeoSampa } from "@/lib/geo/zoneamento";
 import {
+  ehPortalConhecido,
   obterBusca,
   precoPorPotencialDoResultado,
   type ResultadoDetalhado,
@@ -293,10 +294,18 @@ function ListaResultados({
                     >
                       {r.titulo}
                     </a>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      {r.fonte}
-                      {r.bairro ? ` · ${r.bairro}` : ""}
-                      {r.endereco ? ` · ${r.endereco}` : ""}
+                    <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                      <span>{r.fonte}</span>
+                      {!ehPortalConhecido(r.fonte) ? (
+                        <span
+                          className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500"
+                          title="Não veio de um portal de imóveis conhecido — pode ser matéria, blog ou página de listagem"
+                        >
+                          fora dos portais
+                        </span>
+                      ) : null}
+                      {r.bairro ? <span>· {r.bairro}</span> : null}
+                      {r.endereco ? <span>· {r.endereco}</span> : null}
                     </p>
                   </td>
                   <td className="tnum px-4 py-3 text-right whitespace-nowrap">

@@ -91,8 +91,18 @@ export function semFiltroDeSites(consulta: string): string {
   return consulta.replace(/\s*\(\s*site:[^)]*\)\s*$/i, "").trim();
 }
 
+/**
+ * Quantos `site:` cabem numa consulta.
+ *
+ * O Serper recusa (400) o grupo com os sete portais da lista — provavelmente
+ * pelo tamanho. Quatro é o meio-termo: cobre os portais que concentram anúncio
+ * de terreno em São Paulo sem esticar a consulta. Se ainda assim for recusado,
+ * `semFiltroDeSites` entra e a busca roda aberta.
+ */
+export const MAX_SITES_NA_CONSULTA = 4;
+
 export function montarConsultas(entrada: EntradaConsultas): string[] {
-  const lista = portais();
+  const lista = portais().slice(0, MAX_SITES_NA_CONSULTA);
   const filtroSite = lista.length ? `(${lista.map((p) => `site:${p}`).join(" OR ")})` : "";
 
   return regioesDaBusca(entrada).map((regiao) =>
