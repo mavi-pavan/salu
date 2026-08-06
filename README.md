@@ -231,6 +231,10 @@ e as configurações caem no padrão até alguém mudá-las na tela.
 > Consequência: se o banco estiver fora do ar, o build falha em vez de subir
 > uma versão que quebraria em produção. É proposital.
 
+Se você esquecer a `DIRECT_URL`, o build não quebra: ele avisa no log e usa a
+`DATABASE_URL` também para as migrations. Funciona, mas defina as duas — é o
+que separa a conexão com pool (aplicação) da direta (migrations).
+
 Quer os 5 terrenos de exemplo em produção? Rode `npm run db:seed` da sua
 máquina, com o `.env` apontando para o Neon. É opcional.
 
