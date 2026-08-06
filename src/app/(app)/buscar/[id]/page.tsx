@@ -153,6 +153,12 @@ export default async function ResultadosPage({ params }: { params: Promise<{ id:
         </Cartao>
       </div>
 
+      {ativos.length > 0 ? (
+        <div className="mb-6">
+          <CompiladoPorRegiao resultados={ativos} />
+        </div>
+      ) : null}
+
       {ativos.length === 0 ? (
         <Vazio
           titulo="Nenhum anúncio passou no filtro"
@@ -174,6 +180,76 @@ export default async function ResultadosPage({ params }: { params: Promise<{ id:
         </details>
       ) : null}
     </>
+  );
+}
+
+/**
+ * Compilado por região: qual bairro rendeu mais candidatos e onde está o metro
+ * de potencial mais barato. É a leitura que orienta a próxima busca.
+ */
+function CompiladoPorRegiao({ resultados }: { resultados: ResultadoDetalhado[] }) {
+  const porRegiao = new Map<
+    string,
+    { total: number; areaSoma: number; comArea: number; melhorPotencial: number | null }
+  >();
+
+  for (const r of resultados) {
+    const chave = r.bairro ?? "Região não identificada";
+    const atual =
+      porRegiao.get(chave) ?? { total: 0, areaSoma: 0, comArea: 0, melhorPotencial: null };
+
+    atual.total += 1;
+    if (r.areaM2) {
+      atual.areaSoma += r.areaM2;
+      atual.comArea += 1;
+    }
+    const potencial = precoPorPotencialDoResultado(r);
+    if (potencial != null && (atual.melhorPotencial == null || potencial < atual.melhorPotencial)) {
+      atual.melhorPotencial = potencial;
+    }
+
+    porRegiao.set(chave, atual);
+  }
+
+  const linhas = [...porRegiao.entries()].sort((a, b) => b[1].total - a[1].total);
+
+  return (
+    <Cartao className="overflow-hidden">
+      <CartaoCabecalho
+        titulo="Compilado por região"
+        descricao="Onde apareceu mais oferta e onde o metro de potencial está mais barato."
+      />
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[560px] text-sm">
+          <thead className="border-b border-slate-200 bg-slate-50 text-left">
+            <tr className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              <th className="px-4 py-2.5">Região</th>
+              <th className="px-4 py-2.5 text-right">Candidatos</th>
+              <th className="px-4 py-2.5 text-right">Área média</th>
+              <th className="px-4 py-2.5 text-right">Melhor R$/m² potencial</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {linhas.map(([regiao, dados]) => (
+              <tr key={regiao}>
+                <td className="px-4 py-2.5 font-medium text-slate-800">{regiao}</td>
+                <td className="tnum px-4 py-2.5 text-right">{numero(dados.total)}</td>
+                <td className="tnum px-4 py-2.5 text-right text-slate-600">
+                  {dados.comArea ? m2(dados.areaSoma / dados.comArea) : <span className="text-slate-300">—</span>}
+                </td>
+                <td className="tnum px-4 py-2.5 text-right font-medium">
+                  {dados.melhorPotencial != null ? (
+                    brl(dados.melhorPotencial)
+                  ) : (
+                    <span className="text-slate-300">—</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Cartao>
   );
 }
 

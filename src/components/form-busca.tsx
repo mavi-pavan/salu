@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import Link from "next/link";
 
 import { buscarNaInternet } from "@/server/actions-busca";
 import { ESTADO_INICIAL } from "@/lib/form-state";
@@ -10,6 +11,9 @@ import { BotaoEnvio } from "./botao-envio";
 import { Aviso, Campo, Cartao, CartaoCabecalho, CartaoCorpo, Entrada, Selecao } from "./ui";
 
 const ZONAS_BUSCAVEIS = ["ZEU", "ZEUa", "ZEUP", "ZEUPa", "ZEM", "ZEMP"] as const;
+
+/** Espelha MAX_CONSULTAS do servidor (src/server/busca.ts). */
+const MAX_REGIOES = 20;
 
 export function FormBusca({
   regioesPorSetor,
@@ -33,9 +37,14 @@ export function FormBusca({
 
           {/* --- Zonas --- */}
           <div>
-            <p className="mb-2 text-sm font-medium text-slate-700">
-              Zonas <span className="text-rose-500">*</span>
-            </p>
+            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+              <p className="text-sm font-medium text-slate-700">
+                Zonas <span className="text-rose-500">*</span>
+              </p>
+              <Link href="/zonas" className="text-xs font-medium text-emerald-700 hover:underline">
+                O que é cada zona?
+              </Link>
+            </div>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {ZONAS_BUSCAVEIS.map((chave) => {
                 const p = PARAMETROS_ZONA[chave];
@@ -99,51 +108,95 @@ export function FormBusca({
           </div>
 
           {/* --- Regiões --- */}
-          <details className="rounded-lg border border-slate-200">
+          <details className="rounded-lg border border-slate-200" open={selecionadas.length > 0}>
             <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-slate-700">
               Regiões
               <span className="ml-2 font-normal text-slate-500">
                 {selecionadas.length
-                  ? `${selecionadas.length} selecionada(s)`
-                  : "todas (amostra equilibrada pela cidade)"}
+                  ? `${selecionadas.length} marcada(s) — ${selecionadas.length} consulta(s)`
+                  : "nenhuma marcada: amostra automática pela cidade"}
               </span>
             </summary>
+
             <div className="border-t border-slate-200 px-4 py-3">
-              <p className="mb-3 text-xs text-slate-500">
-                Cada região vira uma consulta separada. Sem seleção, o app distribui a amostra entre
-                as cinco regiões da cidade.
-              </p>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-slate-500">
+                  Cada região marcada vira <strong>uma consulta</strong>. Todas as marcadas são
+                  pesquisadas — o limite de consultas ao lado só vale quando você não marca nenhuma.
+                </p>
+                {selecionadas.length ? (
+                  <button
+                    type="button"
+                    onClick={() => setSelecionadas([])}
+                    className="shrink-0 rounded-lg px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100"
+                  >
+                    Limpar tudo
+                  </button>
+                ) : null}
+              </div>
+
+              {selecionadas.length > MAX_REGIOES ? (
+                <div className="mb-3">
+                  <Aviso tom="atencao">
+                    O limite é {MAX_REGIOES} regiões por busca. As {selecionadas.length - MAX_REGIOES}{" "}
+                    últimas ficarão de fora — desmarque algumas ou rode uma segunda busca.
+                  </Aviso>
+                </div>
+              ) : null}
+
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {regioesPorSetor.map(({ setor, regioes }) => (
-                  <div key={setor}>
-                    <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                      {setor}
-                    </p>
-                    <div className="flex flex-col gap-1">
-                      {regioes.map((r) => (
-                        <label
-                          key={r.nome}
-                          className="flex cursor-pointer items-center gap-2 text-sm text-slate-600"
+                {regioesPorSetor.map(({ setor, regioes }) => {
+                  const nomes = regioes.map((r) => r.nome);
+                  const todosMarcados = nomes.every((n) => selecionadas.includes(n));
+
+                  return (
+                    <div key={setor}>
+                      <div className="mb-1.5 flex items-baseline justify-between gap-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                          {setor}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSelecionadas((atual) =>
+                              todosMarcados
+                                ? atual.filter((n) => !nomes.includes(n))
+                                : [...new Set([...atual, ...nomes])],
+                            )
+                          }
+                          className="text-xs font-medium text-emerald-700 hover:underline"
                         >
-                          <input
-                            type="checkbox"
-                            name="regioes"
-                            value={r.nome}
-                            onChange={(e) =>
-                              setSelecionadas((atual) =>
-                                e.target.checked
-                                  ? [...atual, r.nome]
-                                  : atual.filter((n) => n !== r.nome),
-                              )
-                            }
-                            className="h-3.5 w-3.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                          />
-                          <span title={r.eixos.join(", ")}>{r.nome}</span>
-                        </label>
-                      ))}
+                          {todosMarcados ? "desmarcar" : "marcar todos"}
+                        </button>
+                      </div>
+
+                      <div className="flex flex-col gap-1">
+                        {regioes.map((r) => (
+                          <label
+                            key={r.nome}
+                            className="flex cursor-pointer items-center gap-2 text-sm text-slate-600"
+                          >
+                            <input
+                              type="checkbox"
+                              name="regioes"
+                              value={r.nome}
+                              checked={selecionadas.includes(r.nome)}
+                              onChange={(e) =>
+                                setSelecionadas((atual) =>
+                                  e.target.checked
+                                    ? [...atual, r.nome]
+                                    : atual.filter((n) => n !== r.nome),
+                                )
+                              }
+                              className="h-3.5 w-3.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                            />
+                            <span title={`Eixos: ${r.eixos.join(", ")}`}>{r.nome}</span>
+                          </label>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </details>
@@ -158,9 +211,9 @@ export function FormBusca({
               <Entrada id="termosExtras" name="termosExtras" placeholder="opcional" maxLength={160} />
             </Campo>
             <Campo
-              label="Consultas por busca"
+              label="Consultas na amostra automática"
               htmlFor="maxConsultas"
-              ajuda="Cada consulta consome uma unidade da cota do provedor."
+              ajuda="Só vale quando nenhuma região está marcada. Cada consulta consome uma unidade da cota."
             >
               <Selecao id="maxConsultas" name="maxConsultas" defaultValue="6">
                 <option value="3">3 — rápida</option>

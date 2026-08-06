@@ -8,6 +8,7 @@ const ITENS = [
   { href: "/painel", rotulo: "Painel" },
   { href: "/buscar", rotulo: "Buscar terrenos" },
   { href: "/terrenos", rotulo: "Meus terrenos" },
+  { href: "/zonas", rotulo: "Zonas" },
   { href: "/mapa", rotulo: "Mapa" },
   { href: "/configuracoes", rotulo: "Configurações" },
 ];

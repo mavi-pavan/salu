@@ -3,7 +3,13 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { buscarNaWeb, ehDemo, provedorConfigurado, type ItemWeb } from "@/lib/busca/provedores";
 import { dominio, extrairTudo, normalizarZonaTexto } from "@/lib/busca/extrair";
-import { REGIOES, SETORES, normalizar } from "@/lib/busca/regioes";
+import { normalizar } from "@/lib/busca/regioes";
+import {
+  MAX_CONSULTAS,
+  montarConsultas,
+  portais,
+  regioesDescartadas,
+} from "@/lib/busca/consultas";
 import { consultaDeEndereco, geocodificar } from "@/lib/geo/geocodificar";
 import { resolverZona, zoneamentoConfigurado } from "@/lib/geo/zoneamento";
 import { coeficientes, type ZonaChave } from "@/lib/zeu";
@@ -22,74 +28,9 @@ export interface ParametrosBusca {
   maxConsultas: number;
 }
 
-const PORTAIS_PADRAO = [
-  "vivareal.com.br",
-  "zapimoveis.com.br",
-  "imovelweb.com.br",
-  "chavesnamao.com.br",
-  "olx.com.br",
-  "netimoveis.com",
-  "wimoveis.com.br",
-];
-
 const RESULTADOS_POR_CONSULTA = 20;
 const LIMITE_GEOCODE = Number(process.env.BUSCA_MAX_GEOCODE ?? 25);
 const PALAVRAS_RELEVANTES = ["terreno", "lote", "gleba", "área para", "area para"];
-
-// ---------------------------------------------------------------------------
-// Consultas
-// ---------------------------------------------------------------------------
-
-function portais(): string[] {
-  const bruto = process.env.BUSCA_PORTAIS;
-  if (!bruto) return PORTAIS_PADRAO;
-  return bruto
-    .split(",")
-    .map((p) => p.trim())
-    .filter(Boolean);
-}
-
-/**
- * Sem região escolhida, distribui a amostra entre os setores da cidade em vez
- * de pegar os primeiros da lista — senão toda busca sairia enviesada para o
- * Centro, que é o começo do arquivo.
- */
-function amostraDeRegioes(quantidade: number): string[] {
-  const porSetor = SETORES.map((setor) => REGIOES.filter((r) => r.setor === setor));
-  const saida: string[] = [];
-  let indice = 0;
-
-  while (saida.length < quantidade) {
-    let adicionou = false;
-    for (const grupo of porSetor) {
-      const regiao = grupo[indice];
-      if (regiao) {
-        saida.push(regiao.nome);
-        adicionou = true;
-        if (saida.length >= quantidade) break;
-      }
-    }
-    if (!adicionou) break;
-    indice += 1;
-  }
-  return saida;
-}
-
-export function montarConsultas(params: ParametrosBusca): string[] {
-  const limite = Math.max(1, Math.min(params.maxConsultas, 20));
-  const regioes = params.regioes.length ? params.regioes.slice(0, limite) : amostraDeRegioes(limite);
-
-  const lista = portais();
-  const filtroSite = lista.length ? `(${lista.map((p) => `site:${p}`).join(" OR ")})` : "";
-
-  return regioes.map((regiao) =>
-    ["terreno à venda", regiao, "São Paulo", "m²", params.termosExtras ?? "", filtroSite]
-      .filter(Boolean)
-      .join(" ")
-      .replace(/\s+/g, " ")
-      .trim(),
-  );
-}
 
 /** Ignora query string e barra final: o mesmo anúncio chega com utm diferente. */
 function chaveDeUrl(url: string): string {
@@ -125,6 +66,11 @@ export async function executarBusca(
   const consultas = montarConsultas(params);
   const brutos: ItemWeb[] = [];
   let erro: string | null = null;
+
+  const cortadas = regioesDescartadas(params);
+  if (cortadas.length) {
+    erro = `Você marcou ${params.regioes.length} regiões e o limite por busca é ${MAX_CONSULTAS}. Ficaram de fora: ${cortadas.join(", ")}. Rode uma segunda busca com elas.`;
+  }
 
   for (const consulta of consultas) {
     try {
