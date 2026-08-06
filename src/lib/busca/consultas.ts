@@ -41,6 +41,9 @@ const PORTAIS_PADRAO = [
   "olx.com.br",
   "netimoveis.com",
   "wimoveis.com.br",
+  // Terreno de periferia e de espólio aparece muito aqui, e o anúncio costuma
+  // ser do próprio dono — sem corretor no meio.
+  "mercadolivre.com.br",
 ];
 
 export interface EntradaConsultas {

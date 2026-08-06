@@ -157,3 +157,69 @@ describe("não descartar anúncio bom", () => {
     ).toBe("listagem");
   });
 });
+
+describe("Mercado Livre", () => {
+  it("descarta a tela de busca, que vem no singular e sem número", () => {
+    // Endereço real que passou pelo filtro e chegou na tela do usuário. O
+    // caminho é a própria frase pesquisada: sem plural no título e sem
+    // identificador, as outras duas regras não tinham como pegar.
+    expect(
+      classificarPagina(
+        "Terreno Barato Zona Leste Itaquera | MercadoLivre",
+        "https://lista.mercadolivre.com.br/terreno-barato-zona-leste-itaquera",
+      ),
+    ).toBe("listagem");
+  });
+
+  it("descarta a categoria de imóveis", () => {
+    expect(
+      classificarPagina(
+        "Terrenos em Venda | MercadoLivre",
+        "https://imoveis.mercadolivre.com.br/terrenos/venda/",
+      ),
+    ).toBe("listagem");
+  });
+
+  it("mantém o anúncio individual, que traz o código MLB", () => {
+    expect(
+      classificarPagina(
+        "Terreno À Venda Cidade Líder / Zona Leste Sp 595m2",
+        "https://produto.mercadolivre.com.br/MLB-3456789012-terreno-a-venda-cidade-lider-zona-leste-sp595m2-_JM",
+      ),
+    ).toBe("anuncio");
+  });
+});
+
+describe("portal que numera todo anúncio", () => {
+  it("sem número na URL, é a busca do portal", () => {
+    const buscas = [
+      "https://www.vivareal.com.br/venda/sp/sao-paulo/vila-mariana/",
+      "https://www.olx.com.br/imoveis/terrenos/estado-sp",
+      "https://www.zapimoveis.com.br/terrenos-a-venda/sp+sao-paulo/",
+    ];
+    for (const url of buscas) {
+      expect(classificarPagina("Terreno à venda em São Paulo", url)).toBe("listagem");
+    }
+  });
+
+  it("não vale para site que não está na lista", () => {
+    // Imobiliária pequena não segue o padrão dos grandes: sem número, ainda
+    // pode ser um anúncio. Na dúvida, mantém.
+    expect(
+      classificarPagina(
+        "Terreno à venda, 800 m² na Vila Mariana",
+        "https://imobiliariaexemplo.com.br/imovel/terreno-vila-mariana",
+      ),
+    ).toBe("indefinido");
+  });
+});
+
+describe("subdomínio de busca", () => {
+  it("reconhece lista, busca e search", () => {
+    for (const host of ["lista.portal.com.br", "busca.portal.com.br", "search.portal.com"]) {
+      expect(classificarPagina("Terreno à venda", `https://${host}/terreno-na-saude`)).toBe(
+        "listagem",
+      );
+    }
+  });
+});

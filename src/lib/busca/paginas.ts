@@ -79,6 +79,52 @@ const PREFIXOS_DE_LISTAGEM = ["terrenos-", "lotes-", "imoveis-", "areas-"];
 /** Parâmetros que só existem em tela de resultado. */
 const PARAMETROS_DE_LISTAGEM = ["pagina", "page", "transacao", "ordem", "order", "filtro", "q"];
 
+/**
+ * Subdomínio dedicado a busca. O Mercado Livre serve toda tela de resultado em
+ * `lista.mercadolivre.com.br`, e o caminho lá é a própria frase pesquisada
+ * ("/terreno-barato-zona-leste-itaquera") — sem número e no singular, o que
+ * escapava das outras duas regras.
+ */
+const SUBDOMINIOS_DE_LISTAGEM = new Set([
+  "lista",
+  "listas",
+  "busca",
+  "buscar",
+  "search",
+  "pesquisa",
+  "resultado",
+  "resultados",
+]);
+
+/**
+ * Portais em que TODO anúncio individual carrega um número na URL.
+ *
+ * Para esses, a ausência do número é prova suficiente: se o endereço é do
+ * portal e não tem identificador, não é a página de um imóvel — é a busca
+ * dele. A lista é curta de propósito e só tem portal cujo formato de URL foi
+ * conferido; incluir um portal que não segue essa regra descartaria anúncio
+ * bom em silêncio, que é o erro mais caro deste arquivo.
+ */
+const PORTAIS_COM_ID_OBRIGATORIO = [
+  "vivareal.com.br",
+  "zapimoveis.com.br",
+  "imovelweb.com.br",
+  "wimoveis.com.br",
+  "chavesnamao.com.br",
+  "olx.com.br",
+  "mercadolivre.com.br",
+  "mercadolivre.com",
+];
+
+function hospedeiro(url: URL): string {
+  return url.hostname.toLowerCase().replace(/^www\./, "");
+}
+
+function ehPortalComIdObrigatorio(url: URL): boolean {
+  const host = hospedeiro(url);
+  return PORTAIS_COM_ID_OBRIGATORIO.some((p) => host === p || host.endsWith(`.${p}`));
+}
+
 function segmentos(url: URL): string[] {
   return url.pathname
     .split("/")
@@ -121,6 +167,12 @@ function urlDeListagem(url: string): boolean {
   for (const parametro of alvo.searchParams.keys()) {
     if (PARAMETROS_DE_LISTAGEM.includes(parametro.toLowerCase())) return true;
   }
+
+  const [subdominio] = hospedeiro(alvo).split(".");
+  if (subdominio && SUBDOMINIOS_DE_LISTAGEM.has(subdominio)) return true;
+
+  // Portal que numera todo anúncio e veio sem número: é a busca dele.
+  if (ehPortalComIdObrigatorio(alvo)) return true;
 
   const partes = segmentos(alvo);
   // Portal sem caminho nenhum é a home, que também não é anúncio.
