@@ -12,6 +12,19 @@
 
 import { spawnSync } from "node:child_process";
 
+/**
+ * `prisma migrate deploy` pega um advisory lock no Postgres, e advisory lock
+ * não sobrevive ao modo de pooling do Neon: o comando fica esperando para
+ * sempre, sem imprimir erro nenhum, e o build morre no timeout.
+ *
+ * Como o endpoint direto do Neon é exatamente o mesmo host sem o sufixo
+ * `-pooler`, dá para consertar sozinho em vez de deixar o build travar.
+ */
+function enderecoDireto(url) {
+  if (!url.includes("-pooler") || !url.includes("neon.tech")) return url;
+  return url.replace("-pooler", "");
+}
+
 if (!process.env.DIRECT_URL && process.env.DATABASE_URL) {
   process.env.DIRECT_URL = process.env.DATABASE_URL;
   console.warn(
@@ -35,6 +48,24 @@ if (!process.env.DATABASE_URL) {
     "\nDATABASE_URL não está definida. Configure a string de conexão do Postgres antes de buildar.\n",
   );
   process.exit(1);
+}
+
+const direto = enderecoDireto(process.env.DIRECT_URL);
+if (direto !== process.env.DIRECT_URL) {
+  process.env.DIRECT_URL = direto;
+  console.warn(
+    [
+      "",
+      "┌───────────────────────────────────────────────────────────────────",
+      "│ AVISO: DIRECT_URL apontava para o endpoint com pool do Neon.",
+      "│ Removendo o sufixo -pooler para rodar as migrations.",
+      "│",
+      "│ Migrations não funcionam através do pool: elas usam advisory lock,",
+      "│ e o comando ficaria travado sem mensagem de erro.",
+      "└───────────────────────────────────────────────────────────────────",
+      "",
+    ].join("\n"),
+  );
 }
 
 const etapas = [
