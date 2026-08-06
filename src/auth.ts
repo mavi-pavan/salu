@@ -1,6 +1,7 @@
-import NextAuth from "next-auth";
+import NextAuth, { type NextAuthConfig } from "next-auth";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import Nodemailer from "next-auth/providers/nodemailer";
+import Google from "next-auth/providers/google";
 import { createTransport } from "nodemailer";
 
 import { prisma } from "@/lib/prisma";
@@ -79,6 +80,35 @@ function corpoEmail(url: string, host: string) {
   return { texto, html };
 }
 
+/** O botão do Google só aparece quando as credenciais estão configuradas. */
+export function googleAtivo(): boolean {
+  return Boolean(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET);
+}
+
+const provedores: NextAuthConfig["providers"] = [];
+
+if (googleAtivo()) {
+  provedores.push(
+    Google({
+      clientId: process.env.AUTH_GOOGLE_ID,
+      clientSecret: process.env.AUTH_GOOGLE_SECRET,
+
+      /**
+       * Sem isto, quem já entrou alguma vez pelo link mágico levaria
+       * `OAuthAccountNotLinked` ao tentar o Google: o Auth.js se recusa a
+       * juntar duas formas de entrar no mesmo e-mail.
+       *
+       * O risco clássico dessa flag é alguém forjar um provedor que afirme ser
+       * dono de um e-mail alheio. Aqui isso não se aplica: o único provedor é o
+       * Google, que verifica a posse do endereço, o `signIn` abaixo recusa
+       * e-mail não verificado, e nada disso entra sem estar na lista de
+       * convidados.
+       */
+      allowDangerousEmailAccountLinking: true,
+    }),
+  );
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: { strategy: "database", maxAge: 30 * 24 * 60 * 60 },
@@ -89,6 +119,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     error: "/entrar/erro",
   },
   providers: [
+    ...provedores,
     Nodemailer({
       // O valor real só é usado quando EMAIL_SERVER existe; o placeholder evita
       // que o provider quebre na inicialização em ambiente de desenvolvimento.
@@ -134,8 +165,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
-    async signIn({ user }) {
+    async signIn({ user, account, profile }) {
       if (!user.email) return false;
+
+      // Conta Google sem e-mail verificado não prova posse do endereço — e é
+      // justamente a posse que a lista de convidados assume.
+      if (account?.provider === "google") {
+        const verificado = (profile as { email_verified?: boolean } | undefined)?.email_verified;
+        if (verificado === false) return "/entrar/erro?error=AccessDenied";
+      }
+
       const autorizado = await emailAutorizado(user.email);
       // Redireciona para a página de erro com um motivo legível.
       return autorizado ? true : "/entrar/erro?error=AccessDenied";

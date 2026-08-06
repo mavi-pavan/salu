@@ -16,7 +16,22 @@ const MENSAGENS: Record<string, { titulo: string; texto: string }> = {
   Configuration: {
     titulo: "Configuração incompleta",
     texto:
-      "O servidor de e-mail ou o AUTH_SECRET não estão configurados. Verifique as variáveis de ambiente.",
+      "O servidor de e-mail, o AUTH_SECRET ou as credenciais do Google não estão configurados. Verifique as variáveis de ambiente.",
+  },
+  OAuthAccountNotLinked: {
+    titulo: "E-mail já usado por outro caminho",
+    texto:
+      "Esse endereço já entrou no Salu por outro método. Use o mesmo de antes, ou peça a um administrador para verificar a conta.",
+  },
+  OAuthSignin: {
+    titulo: "Falha ao falar com o Google",
+    texto:
+      "Não foi possível iniciar o login com o Google. Tente de novo; se persistir, use o link por e-mail.",
+  },
+  OAuthCallback: {
+    titulo: "O Google recusou o retorno",
+    texto:
+      "Normalmente é a URL de redirecionamento cadastrada no Google Cloud que não bate com o endereço do site.",
   },
 };
 

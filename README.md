@@ -4,8 +4,8 @@ Triagem, pontuação e due diligence de terrenos em **Zona Eixo de Estruturaçã
 Transformação Urbana (ZEU)** na cidade de São Paulo, sob a Lei Municipal
 16.402/2016 (LPUOS), alterada pelas Leis 18.081/2024 e 18.177/2024.
 
-App privado, para um time de 3 a 6 pessoas. Entrada por link mágico no e-mail,
-sem senha, e só para quem foi convidado.
+App privado, para um time de 3 a 6 pessoas. Entrada por conta Google ou link
+mágico no e-mail, sem senha, e só para quem foi convidado.
 
 ---
 
@@ -45,7 +45,7 @@ auditoria de quem mudou o quê, e controle de papéis (admin / membro / leitor).
 | Framework | Next.js 15 (App Router) + React 19 + TypeScript |
 | Estilo | Tailwind CSS v4 |
 | Banco | PostgreSQL + Prisma 6 |
-| Autenticação | Auth.js (NextAuth v5) — link mágico por e-mail, sessão em banco |
+| Autenticação | Auth.js (NextAuth v5) — Google ou link mágico, sessão em banco |
 | Testes | Vitest |
 | Mapa | Leaflet + OpenStreetMap |
 | Deploy | Vercel + Neon |
@@ -106,9 +106,46 @@ Abra <http://localhost:3000>, digite o e-mail que você colocou em
 
 ---
 
+## Login com Google (recomendado)
+
+Com o Google configurado, ninguém depende de e-mail para entrar — some toda a
+dor de entrega de link mágico. A lista de convidados continua valendo: só entra
+quem está em `ADMIN_EMAILS` ou foi convidado dentro do app.
+
+1. Vá em <https://console.cloud.google.com> e crie (ou escolha) um projeto.
+2. **APIs e Serviços → Tela de permissão OAuth**: tipo **Externo**, preencha
+   nome do app e e-mail de contato. Em *Usuários de teste*, adicione os e-mails
+   da equipe — assim não precisa publicar o app para verificação.
+3. **APIs e Serviços → Credenciais → Criar credenciais → ID do cliente OAuth**,
+   tipo **Aplicativo da Web**.
+4. Em **URIs de redirecionamento autorizados**, adicione:
+   ```
+   https://SEU-SITE.vercel.app/api/auth/callback/google
+   http://localhost:3000/api/auth/callback/google
+   ```
+   O caminho `/api/auth/callback/google` tem que ser exato.
+5. Copie o **ID do cliente** e a **Chave secreta** para as variáveis:
+   ```env
+   AUTH_GOOGLE_ID="...apps.googleusercontent.com"
+   AUTH_GOOGLE_SECRET="..."
+   ```
+
+O botão "Entrar com Google" aparece sozinho quando as duas existem. Sem elas, a
+tela mostra só o link por e-mail.
+
+**Sobre juntar as duas formas de entrar:** quem já entrou pelo link mágico e
+depois usa o Google cairia em `OAuthAccountNotLinked`, porque o Auth.js não
+junta métodos no mesmo e-mail por padrão. O app liga
+`allowDangerousEmailAccountLinking` no provedor do Google — seguro aqui porque o
+Google verifica a posse do endereço, o app recusa conta com e-mail não
+verificado, e nada entra sem estar na lista de convidados.
+
+---
+
 ## Configurando o envio de e-mail
 
-Para os outros membros entrarem, o app precisa mandar e-mail de verdade.
+Opcional se você já configurou o Google acima. Serve como caminho alternativo
+ou para quem não tem conta Google.
 Qualquer SMTP serve; o mais rápido é o [Resend](https://resend.com) (gratuito
 até 3.000 e-mails/mês):
 
@@ -211,6 +248,8 @@ GeoJSON em memória. O ponto de troca é a função `resolverZona` em
    | `DATABASE_URL` | string *pooled* do Neon |
    | `DIRECT_URL` | string *direct* do Neon |
    | `AUTH_SECRET` | saída de `npx auth secret` |
+   | `AUTH_GOOGLE_ID` | ID do cliente OAuth |
+   | `AUTH_GOOGLE_SECRET` | chave secreta do cliente OAuth |
    | `ADMIN_EMAILS` | seu e-mail |
    | `EMAIL_SERVER` | SMTP do Resend |
    | `EMAIL_FROM` | remetente verificado |
