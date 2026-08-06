@@ -21,13 +21,14 @@ export default async function EntrarPage() {
     <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-12">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-600">
-            Prospecção
+          <span className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-600 text-xl font-bold text-white">
+            S
+          </span>
+          <h1 className="text-3xl font-semibold tracking-tight text-slate-900">Salu</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Prospecção de terrenos em Zona Eixo · São Paulo
           </p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
-            Terrenos ZEU · São Paulo
-          </h1>
-          <p className="mt-2 text-sm text-slate-500">
+          <p className="mt-4 text-sm text-slate-500">
             Acesso restrito à equipe. Informe seu e-mail e enviaremos um link de acesso.
           </p>
         </div>

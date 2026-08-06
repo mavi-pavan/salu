@@ -4,11 +4,11 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "Prospecção ZEU",
-    template: "%s · Prospecção ZEU",
+    default: "Salu",
+    template: "%s · Salu",
   },
   description:
-    "Triagem, pontuação e due diligence de terrenos em Zona Eixo (ZEU) na cidade de São Paulo.",
+    "Salu — triagem, pontuação e due diligence de terrenos em Zona Eixo (ZEU) na cidade de São Paulo.",
   robots: { index: false, follow: false },
 };
 

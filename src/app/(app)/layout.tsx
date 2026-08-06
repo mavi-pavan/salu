@@ -16,11 +16,11 @@ export default async function LayoutApp({ children }: { children: React.ReactNod
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 pt-3 sm:px-6">
           <Link href="/painel" className="flex items-center gap-2.5">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-sm font-bold text-white">
-              Z
+              S
             </span>
             <span className="leading-tight">
-              <span className="block text-sm font-semibold text-slate-900">Prospecção ZEU</span>
-              <span className="block text-xs text-slate-500">São Paulo · LPUOS 16.402/2016</span>
+              <span className="block text-sm font-semibold text-slate-900">Salu</span>
+              <span className="block text-xs text-slate-500">Terrenos ZEU · São Paulo</span>
             </span>
           </Link>
 

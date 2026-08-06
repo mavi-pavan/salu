@@ -20,10 +20,10 @@ const INTERVALO_MS = 1_100;
 /**
  * O Nominatim responde 403 para quem não se identifica com um contato real.
  * Configure NOMINATIM_USER_AGENT com algo como
- * "prospeccao-zeu/1.0 (voce@exemplo.com)" — sem isso, a geocodificação
+ * "salu/1.0 (voce@exemplo.com)" — sem isso, a geocodificação
  * simplesmente não funciona e todas as zonas ficam "a verificar".
  */
-const USER_AGENT = process.env.NOMINATIM_USER_AGENT ?? "prospeccao-zeu/1.0 (contato-nao-configurado)";
+const USER_AGENT = process.env.NOMINATIM_USER_AGENT ?? "salu/1.0 (contato-nao-configurado)";
 
 export interface Coordenada {
   latitude: number;

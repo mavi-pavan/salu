@@ -1,4 +1,4 @@
-// Prospecção ZEU — schema do banco
+// Salu — schema do banco
 //
 // Nota sobre tipos numéricos: usamos Float (double precision) em vez de Decimal.
 // Todos os números aqui são *estimativas de prospecção* (área, VGV, custo de obra,

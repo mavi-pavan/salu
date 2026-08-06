@@ -33,7 +33,7 @@ async function emailAutorizado(email: string): Promise<boolean> {
 
 function corpoEmail(url: string, host: string) {
   const texto = [
-    "Prospecção ZEU",
+    "Salu",
     "",
     "Use o link abaixo para entrar. Ele vale por 24 horas e só pode ser usado uma vez.",
     url,
@@ -49,7 +49,7 @@ function corpoEmail(url: string, host: string) {
                style="background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;padding:32px">
           <tr><td>
             <p style="margin:0 0 4px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#059669;font-weight:600">
-              Prospecção ZEU
+              Salu
             </p>
             <h1 style="margin:0 0 16px;font-size:20px;line-height:1.3;color:#0f172a">
               Seu link de acesso
@@ -93,7 +93,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // O valor real só é usado quando EMAIL_SERVER existe; o placeholder evita
       // que o provider quebre na inicialização em ambiente de desenvolvimento.
       server: process.env.EMAIL_SERVER || "smtp://localhost:1025",
-      from: process.env.EMAIL_FROM || "Prospecção ZEU <nao-responda@localhost>",
+      from: process.env.EMAIL_FROM || "Salu <nao-responda@localhost>",
       maxAge: 24 * 60 * 60,
 
       async sendVerificationRequest({ identifier, url, provider }) {
@@ -121,7 +121,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const resultado = await transport.sendMail({
           to: identifier,
           from: provider.from,
-          subject: `Entrar na Prospecção ZEU`,
+          subject: `Entrar no Salu`,
           text: texto,
           html,
         });

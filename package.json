@@ -1,8 +1,8 @@
 {
-  "name": "prospeccao-zeu",
+  "name": "salu",
   "version": "1.0.0",
   "private": true,
-  "description": "Triagem e due diligence de terrenos em Zona Eixo (ZEU) na cidade de São Paulo",
+  "description": "Salu — triagem e due diligence de terrenos em Zona Eixo (ZEU) na cidade de São Paulo",
   "scripts": {
     "dev": "next dev",
     "build": "node scripts/build.mjs",

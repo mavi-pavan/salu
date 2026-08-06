@@ -1,4 +1,4 @@
-# Prospecção ZEU
+# Salu
 
 Triagem, pontuação e due diligence de terrenos em **Zona Eixo de Estruturação da
 Transformação Urbana (ZEU)** na cidade de São Paulo, sob a Lei Municipal
@@ -116,7 +116,7 @@ até 3.000 e-mails/mês):
 2. No `.env`:
    ```env
    EMAIL_SERVER="smtp://resend:SUA_API_KEY@smtp.resend.com:587"
-   EMAIL_FROM="Prospecção ZEU <onboarding@resend.dev>"
+   EMAIL_FROM="Salu <onboarding@resend.dev>"
    ```
 3. Para usar seu próprio domínio no remetente, verifique o domínio no Resend e
    troque o `EMAIL_FROM`.
@@ -154,7 +154,7 @@ O endereço extraído do anúncio é geocodificado pelo Nominatim (OpenStreetMap
 que é gratuito mas **exige identificação**:
 
 ```env
-NOMINATIM_USER_AGENT="prospeccao-zeu/1.0 (voce@exemplo.com)"
+NOMINATIM_USER_AGENT="salu/1.0 (voce@exemplo.com)"
 ```
 
 Sem isso o Nominatim responde 403, nenhum endereço é localizado e todas as
@@ -215,7 +215,7 @@ GeoJSON em memória. O ponto de troca é a função `resolverZona` em
    | `EMAIL_SERVER` | SMTP do Resend |
    | `EMAIL_FROM` | remetente verificado |
    | `SERPER_API_KEY` | chave da busca |
-   | `NOMINATIM_USER_AGENT` | `prospeccao-zeu/1.0 (seu@email)` |
+   | `NOMINATIM_USER_AGENT` | `salu/1.0 (seu@email)` |
 
    Não precisa definir `AUTH_URL`: a Vercel injeta a URL sozinha e o app está
    com `trustHost` ligado.
