@@ -115,7 +115,11 @@ export default async function ResultadosPage({ params }: { params: Promise<{ id:
         <Metrica
           rotulo="Reprovados pela zona"
           valor={numero(busca.descartadosZona)}
-          detalhe="zona confirmada fora do filtro"
+          detalhe={
+            busca.zonasReprovadas.length
+              ? busca.zonasReprovadas.join(", ")
+              : "zona confirmada fora do filtro"
+          }
         />
       </div>
 

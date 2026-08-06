@@ -92,19 +92,27 @@ export async function executarBusca(
 ): Promise<ResumoBusca> {
   const consultas = montarConsultas(params);
   const brutos: ItemWeb[] = [];
-  let erro: string | null = null;
+
+  // Uma busca pode dar errado em mais de um lugar ao mesmo tempo, e guardar só
+  // o primeiro problema esconde os outros: foi assim que uma falha de
+  // zoneamento ficou invisível atrás de um aviso sobre o filtro de portais.
+  const avisos: string[] = [];
 
   const cortadas = regioesDescartadas(params);
   if (cortadas.length) {
-    erro = `Você marcou ${params.regioes.length} regiões e o limite por busca é ${MAX_CONSULTAS}. Ficaram de fora: ${cortadas.join(", ")}. Rode uma segunda busca com elas.`;
+    avisos.push(
+      `Você marcou ${params.regioes.length} regiões e o limite por busca é ${MAX_CONSULTAS}. Ficaram de fora: ${cortadas.join(", ")}. Rode uma segunda busca com elas.`,
+    );
   }
 
-  let caiuParaConsultaSimples = false;
+  let motivoDaRecusa: string | null = null;
 
   for (const consulta of consultas) {
     try {
       brutos.push(...(await buscarNaWeb(consulta, RESULTADOS_POR_CONSULTA)));
     } catch (falha) {
+      const motivo = falha instanceof Error ? falha.message : "Falha na busca";
+
       // O grupo `(site:... OR site:...)` é a parte mais exótica da consulta e a
       // primeira a ser recusada por um provedor. Antes de desistir, tenta sem
       // ele: busca mais aberta ainda é melhor que resultado nenhum.
@@ -112,7 +120,7 @@ export async function executarBusca(
       if (alternativa !== consulta) {
         try {
           brutos.push(...(await buscarNaWeb(alternativa, RESULTADOS_POR_CONSULTA)));
-          caiuParaConsultaSimples = true;
+          motivoDaRecusa ??= motivo;
           continue;
         } catch {
           // segue para o erro original, que é o mais informativo
@@ -120,14 +128,17 @@ export async function executarBusca(
       }
 
       // Cota estourada ou chave inválida: para de insistir e conta o que já veio.
-      erro = falha instanceof Error ? falha.message : "Falha na busca";
+      avisos.push(motivo);
       break;
     }
   }
 
-  if (!erro && caiuParaConsultaSimples) {
-    erro =
-      "O provedor recusou a consulta com filtro de portais, então a busca rodou sem ele. Os resultados podem incluir páginas que não são anúncio.";
+  if (motivoDaRecusa) {
+    // O motivo cru vai junto de propósito: sem ele, "o provedor recusou" não
+    // dá para consertar — o corpo da resposta é que diz qual parâmetro caiu.
+    avisos.push(
+      `O provedor recusou a consulta com filtro de portais, então a busca rodou sem ele e os resultados podem incluir páginas que não são anúncio. Resposta do provedor: ${motivoDaRecusa}`,
+    );
   }
 
   const vistos = new Set<string>();
@@ -199,6 +210,7 @@ export async function executarBusca(
   }> = [];
 
   let descartadosZona = 0;
+  const zonasReprovadas = new Map<string, number>();
   let falhasZoneamento = 0;
   let motivoZoneamento: string | null = null;
 
@@ -228,8 +240,15 @@ export async function executarBusca(
     if (!passaZona(zonaDetectada, params)) {
       // Reprovado pela camada oficial é informação, não silêncio: sem esta
       // contagem, uma busca que acha 40 lotes e descarta 38 por não serem ZEU
-      // aparece na tela como "nenhum anúncio passou no filtro".
-      if (origemZona === "GEOSAMPA" || origemZona === "GEOJSON") descartadosZona += 1;
+      // aparece na tela como "nenhum anúncio passou no filtro". E a sigla crua
+      // vai junto, porque é ela que diz se o zoneamento acertou.
+      if (origemZona === "GEOSAMPA" || origemZona === "GEOJSON") {
+        descartadosZona += 1;
+        if (resolvida?.estado === "encontrada") {
+          const sigla = resolvida.bruto.trim() || "(vazio)";
+          zonasReprovadas.set(sigla, (zonasReprovadas.get(sigla) ?? 0) + 1);
+        }
+      }
       continue;
     }
 
@@ -253,16 +272,27 @@ export async function executarBusca(
   // Geocodificação silenciosamente quebrada é o pior cenário: tudo vira
   // "a verificar" e ninguém entende por quê. Se nenhuma tentativa deu certo,
   // isso aparece junto do resultado.
-  if (!erro && geocodificados > 0 && geocodificadosComSucesso === 0) {
-    erro =
-      "Nenhum endereço pôde ser geocodificado — as zonas não foram confirmadas. Verifique NOMINATIM_USER_AGENT (o Nominatim recusa requisições sem contato identificado).";
+  if (geocodificados > 0 && geocodificadosComSucesso === 0) {
+    avisos.push(
+      "Nenhum endereço pôde ser geocodificado — as zonas não foram confirmadas. Verifique NOMINATIM_USER_AGENT (o Nominatim recusa requisições sem contato identificado).",
+    );
+  } else if (geocodificadosComSucesso < geocodificados) {
+    // Explica a métrica "zona confirmada" baixa sem obrigar ninguém a deduzir:
+    // anúncio cujo endereço não é localizável nunca chega ao zoneamento.
+    avisos.push(
+      `Dos ${geocodificados} anúncios com endereço no texto, ${geocodificadosComSucesso} foram localizados no mapa — só esses chegam a ser cruzados com o zoneamento. Os demais ou não trazem endereço específico o bastante, ou o serviço de geocodificação não respondeu.`,
+    );
   }
 
   // O mesmo vale para o zoneamento: se a camada não respondeu, ninguém pode
   // concluir que os lotes não são ZEU — eles ficaram sem conferência.
-  if (!erro && motivoZoneamento) {
-    erro = `A camada de zoneamento não respondeu em ${falhasZoneamento} consulta(s); essas zonas ficaram "a verificar". Motivo: ${motivoZoneamento}`;
+  if (motivoZoneamento) {
+    avisos.push(
+      `A camada de zoneamento não respondeu em ${falhasZoneamento} consulta(s); essas zonas ficaram "a verificar". Motivo: ${motivoZoneamento}`,
+    );
   }
+
+  const erro = avisos.length ? avisos.join(" ") : null;
 
   const busca = await prisma.busca.create({
     data: {
@@ -278,6 +308,11 @@ export async function executarBusca(
       totalBruto: brutos.length,
       totalAceito: aceitos.length,
       descartadosZona,
+      // Ordenado do mais frequente para o menos: "ZM (3), ZC (2)".
+      zonasReprovadas: [...zonasReprovadas.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 12)
+        .map(([sigla, quantas]) => `${sigla} (${quantas})`),
       erro,
       resultados: { create: aceitos },
     },
