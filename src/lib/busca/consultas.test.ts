@@ -110,4 +110,14 @@ describe("plano B sem filtro de portais", () => {
     const simples = semFiltroDeSites(consulta!);
     expect(simples).toBe(simples.trim());
   });
+
+  it("é idempotente", () => {
+    // A busca depende disso: quando o provedor recusa operadores, ela passa a
+    // enviar a versão simples direto e usa a diferença entre as duas para saber
+    // que não há mais o que tentar. Se aplicar duas vezes mudasse o texto, cada
+    // consulta viraria uma tentativa perdida a mais.
+    const [consulta] = montarConsultas({ ...base, regioes: ["Lapa"] });
+    const uma = semFiltroDeSites(consulta!);
+    expect(semFiltroDeSites(uma)).toBe(uma);
+  });
 });

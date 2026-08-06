@@ -106,21 +106,34 @@ export async function executarBusca(
   }
 
   let motivoDaRecusa: string | null = null;
+  /**
+   * Recusa do filtro de portais é definitiva, não sorte: o plano gratuito do
+   * Serper simplesmente não aceita operadores. Insistir a cada região gastaria
+   * duas chamadas por consulta — uma que morre com 400 e outra que funciona.
+   */
+  let operadoresRecusados = false;
+  /** O que foi realmente enviado, que nem sempre é o que foi montado. */
+  const consultasEfetivas: string[] = [];
 
   for (const consulta of consultas) {
+    const alvo = operadoresRecusados ? semFiltroDeSites(consulta) : consulta;
+    consultasEfetivas.push(alvo);
+
     try {
-      brutos.push(...(await buscarNaWeb(consulta, RESULTADOS_POR_CONSULTA)));
+      brutos.push(...(await buscarNaWeb(alvo, RESULTADOS_POR_CONSULTA)));
     } catch (falha) {
       const motivo = falha instanceof Error ? falha.message : "Falha na busca";
 
       // O grupo `(site:... OR site:...)` é a parte mais exótica da consulta e a
       // primeira a ser recusada por um provedor. Antes de desistir, tenta sem
       // ele: busca mais aberta ainda é melhor que resultado nenhum.
-      const alternativa = semFiltroDeSites(consulta);
-      if (alternativa !== consulta) {
+      const alternativa = semFiltroDeSites(alvo);
+      if (alternativa !== alvo) {
         try {
           brutos.push(...(await buscarNaWeb(alternativa, RESULTADOS_POR_CONSULTA)));
           motivoDaRecusa ??= motivo;
+          operadoresRecusados = true;
+          consultasEfetivas[consultasEfetivas.length - 1] = alternativa;
           continue;
         } catch {
           // segue para o erro original, que é o mais informativo
@@ -136,8 +149,11 @@ export async function executarBusca(
   if (motivoDaRecusa) {
     // O motivo cru vai junto de propósito: sem ele, "o provedor recusou" não
     // dá para consertar — o corpo da resposta é que diz qual parâmetro caiu.
+    const planoGratuito = /not allowed for free accounts/i.test(motivoDaRecusa);
     avisos.push(
-      `O provedor recusou a consulta com filtro de portais, então a busca rodou sem ele e os resultados podem incluir páginas que não são anúncio. Resposta do provedor: ${motivoDaRecusa}`,
+      planoGratuito
+        ? `O plano gratuito do Serper não aceita operadores de busca, então o filtro de portais foi desligado nesta e nas consultas seguintes. Os resultados podem incluir páginas que não são anúncio — elas vêm marcadas como "fora dos portais" na lista. Para filtrar por portal de verdade: use o Tavily (que restringe domínios sem operador) ou um plano pago do Serper. Resposta do provedor: ${motivoDaRecusa}`
+        : `O provedor recusou a consulta com filtro de portais, então a busca rodou sem ele e os resultados podem incluir páginas que não são anúncio. Resposta do provedor: ${motivoDaRecusa}`,
     );
   }
 
@@ -304,7 +320,7 @@ export async function executarBusca(
       regioes: params.regioes,
       termosExtras: params.termosExtras,
       provedor: provedorConfigurado(),
-      consultas,
+      consultas: consultasEfetivas,
       totalBruto: brutos.length,
       totalAceito: aceitos.length,
       descartadosZona,

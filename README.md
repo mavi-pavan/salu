@@ -180,6 +180,17 @@ Para buscar de verdade, escolha **um** provedor e coloque a chave no `.env`:
 O app detecta sozinho qual está configurada. Recomendo o Serper: os portais
 brasileiros de imóvel são muito melhor indexados pelo Google.
 
+**Uma limitação que só aparece rodando:** o plano gratuito do Serper recusa
+operadores de busca — a consulta com `(site:vivareal.com.br OR ...)` volta
+`400 Query pattern not allowed for free accounts`. O app percebe isso na
+primeira consulta, desliga o filtro de portais para o resto da busca (em vez de
+insistir e gastar duas chamadas por região) e avisa na tela. Os resultados que
+não vieram de portal conhecido aparecem marcados como "fora dos portais".
+
+Quem precisa do filtro de portais funcionando na cota gratuita: use o **Tavily**,
+que restringe domínios por parâmetro (`include_domains`) em vez de operador. O
+app já faz isso sozinho quando a chave do Tavily é a configurada.
+
 **Por que busca em vez de raspagem direta?** Os portais não têm API pública e
 seus termos de uso proíbem raspagem automatizada. Consultar um provedor de
 busca e ler o que ele já indexou é o caminho que funciona e não passa por cima

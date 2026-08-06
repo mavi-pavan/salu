@@ -16,6 +16,8 @@
  * como tal na interface, só para conhecer o fluxo antes de assinar algo.
  */
 
+import { portais, semFiltroDeSites } from "./consultas";
+
 export interface ItemWeb {
   titulo: string;
   url: string;
@@ -130,7 +132,14 @@ async function viaBrave(consulta: string, limite: number): Promise<ItemWeb[]> {
     }));
 }
 
+/**
+ * O Tavily restringe domínios por parâmetro, não por operador de busca — então
+ * aqui o grupo `(site:...)` sai do texto e vira `include_domains`. Isso importa:
+ * é o único provedor da lista em que o filtro de portais funciona na cota
+ * gratuita (o Serper recusa operadores com "not allowed for free accounts").
+ */
 async function viaTavily(consulta: string, limite: number): Promise<ItemWeb[]> {
+  const dominios = portais();
   const resposta = await fetch("https://api.tavily.com/search", {
     method: "POST",
     headers: {
@@ -138,10 +147,11 @@ async function viaTavily(consulta: string, limite: number): Promise<ItemWeb[]> {
       Authorization: `Bearer ${chave("TAVILY_API_KEY")}`,
     },
     body: JSON.stringify({
-      query: consulta,
+      query: semFiltroDeSites(consulta),
       max_results: Math.min(limite, 20),
       search_depth: "basic",
       country: "brazil",
+      ...(dominios.length ? { include_domains: dominios } : {}),
     }),
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
