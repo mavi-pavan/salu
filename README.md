@@ -196,6 +196,41 @@ seus termos de uso proíbem raspagem automatizada. Consultar um provedor de
 busca e ler o que ele já indexou é o caminho que funciona e não passa por cima
 disso. O app nunca abre o portal fingindo ser um navegador.
 
+### Como a busca mira no eixo
+
+A ZEU não é o bairro: é uma faixa em torno da estação. Por isso a busca pergunta
+de três formas, combináveis na tela:
+
+- **pelas estações do eixo** — `terreno à venda estação Praça da Árvore`, que é
+  como o anúncio de terreno para incorporação se descreve, porque a estação é o
+  argumento de venda dele;
+- **pelo bairro inteiro** — a rede mais larga, que traz também o que está longe
+  do eixo;
+- **por termo de incorporação** — `área para incorporação`, o vocabulário de
+  quem já sabe o que tem em mãos.
+
+Cada região marcada rende mais de uma consulta, então a cota é repartida em
+rodadas: toda região recebe a primeira consulta antes de qualquer uma receber a
+segunda.
+
+Do texto do anúncio saem também a **estação citada** e a **distância declarada
+até ela** — que é o melhor indício de eixo que um anúncio oferece e já vai
+preenchido quando o resultado vira terreno no funil. Nome de bairro não conta
+como estação: metade das estações de São Paulo se chama como o bairro, então sem
+uma palavra de transporte no texto o campo fica vazio.
+
+### O veredito na lista
+
+A coluna **"cabe na conta"** compara o preço pedido com o preço máximo que fecha
+a margem alvo, usando a mesma função da ficha do terreno e as premissas de
+Configurações. Folga positiva é oportunidade; negativa é quanto seria preciso
+negociar.
+
+Sem zona confirmada não há veredito — os coeficientes mudam tudo, e supor ZEU
+transformaria um lote de ZM num falso achado. E quando as premissas são tais que
+obra e custos já passam do VGV, a tela diz isso com todas as letras em vez de
+mostrar um traço: o problema está na conta, não no anúncio.
+
 ### Geocodificação
 
 O endereço extraído do anúncio é geocodificado pelo Nominatim (OpenStreetMap),

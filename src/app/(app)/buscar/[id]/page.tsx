@@ -9,8 +9,11 @@ import {
   ehPortalConhecido,
   obterBusca,
   precoPorPotencialDoResultado,
+  vereditoDoResultado,
   type ResultadoDetalhado,
 } from "@/server/busca";
+import { obterConfiguracao } from "@/server/queries";
+import type { Premissas } from "@/lib/viabilidade";
 import { alternarDescarte, excluirBusca } from "@/server/actions-busca";
 import {
   Aviso,
@@ -58,13 +61,21 @@ const ORIGEM_ZONA: Record<string, { rotulo: string; classe: string; ajuda: strin
 export default async function ResultadosPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const usuario = await exigirUsuario();
-  const busca = await obterBusca(id);
+  const [busca, config] = await Promise.all([obterBusca(id), obterConfiguracao()]);
   if (!busca) notFound();
+  const premissas = config.premissas;
 
   const editavel = podeEditar(usuario.papel);
   const ativos = busca.resultados.filter((r) => !r.descartado);
   const descartados = busca.resultados.filter((r) => r.descartado);
   const comArea = ativos.filter((r) => r.areaM2 != null);
+  // Quando toda linha com dado suficiente diz "as premissas não fecham", o
+  // problema não está nos anúncios: está na conta. Dizer isso uma vez no topo
+  // evita que alguém descarte a busca inteira achando que não achou nada.
+  const vereditos = ativos.map((r) => vereditoDoResultado(r, premissas));
+  const comConta = vereditos.filter((v) => v.estado !== "sem_dados");
+  const nenhumFecha =
+    comConta.length > 0 && comConta.every((v) => v.estado === "premissas_inviaveis");
   const areaTotal = comArea.reduce((soma, r) => soma + (r.areaM2 ?? 0), 0);
 
   return (
@@ -98,6 +109,21 @@ export default async function ResultadosPage({ params }: { params: Promise<{ id:
         <div className="mb-6">
           <Aviso tom="atencao" titulo="Aviso sobre esta busca">
             {busca.erro}
+          </Aviso>
+        </div>
+      ) : null}
+
+      {nenhumFecha ? (
+        <div className="mb-6">
+          <Aviso tom="atencao" titulo="Nenhum empreendimento fecha com as premissas atuais">
+            Com venda a {brl(premissas.precoVendaM2)}/m² e obra a {brl(premissas.custoObraM2)}/m², os
+            custos de obra, indiretos, comissão e impostos já passam do VGV — nenhum preço de
+            terreno, nem de graça, entrega a margem de {pct(premissas.margemAlvoPct * 100, 0)}. A
+            coluna &quot;cabe na conta&quot; não tem o que responder enquanto isso valer.{" "}
+            <Link href="/configuracoes" className="font-medium underline">
+              Revise as premissas
+            </Link>{" "}
+            com os números da região que você prospecta.
           </Aviso>
         </div>
       ) : null}
@@ -199,7 +225,7 @@ export default async function ResultadosPage({ params }: { params: Promise<{ id:
           acao={<BotaoLink href="/buscar">Ajustar filtros</BotaoLink>}
         />
       ) : (
-        <ListaResultados resultados={ativos} editavel={editavel} />
+        <ListaResultados resultados={ativos} editavel={editavel} premissas={premissas} />
       )}
 
       {descartados.length ? (
@@ -208,7 +234,7 @@ export default async function ResultadosPage({ params }: { params: Promise<{ id:
             {descartados.length} descartado(s)
           </summary>
           <div className="mt-3">
-            <ListaResultados resultados={descartados} editavel={editavel} />
+            <ListaResultados resultados={descartados} editavel={editavel} premissas={premissas} />
           </div>
         </details>
       ) : null}
@@ -289,14 +315,32 @@ function CompiladoPorRegiao({ resultados }: { resultados: ResultadoDetalhado[] }
 function ListaResultados({
   resultados,
   editavel,
+  premissas,
 }: {
   resultados: ResultadoDetalhado[];
   editavel: boolean;
+  premissas: Premissas;
 }) {
   return (
     <Cartao className="overflow-hidden">
+      <CartaoCabecalho
+        titulo="Candidatos"
+        descricao={
+          <>
+            &quot;Cabe na conta&quot; compara o preço pedido com o máximo que fecha a margem alvo,
+            pela mesma conta da ficha do terreno — hoje com venda a {brl(premissas.precoVendaM2)}/m²
+            e obra a {brl(premissas.custoObraM2)}/m². Esses números mudam muito de bairro para
+            bairro:{" "}
+            <Link href="/configuracoes" className="font-medium text-emerald-700 hover:underline">
+              ajuste em Configurações
+            </Link>{" "}
+            antes de descartar alguém por causa deles. Sem zona confirmada não há veredito: os
+            coeficientes mudam tudo.
+          </>
+        }
+      />
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[900px] text-sm">
+        <table className="w-full min-w-[1000px] text-sm">
           <thead className="border-b border-slate-200 bg-slate-50 text-left">
             <tr className="text-xs font-medium uppercase tracking-wide text-slate-500">
               <th className="px-4 py-2.5">Anúncio</th>
@@ -304,6 +348,7 @@ function ListaResultados({
               <th className="px-4 py-2.5 text-right">Preço</th>
               <th className="px-4 py-2.5 text-right">R$/m² terreno</th>
               <th className="px-4 py-2.5 text-right">R$/m² potencial</th>
+              <th className="px-4 py-2.5 text-right">Cabe na conta?</th>
               <th className="px-4 py-2.5">Zona</th>
               <th className="px-4 py-2.5 text-right">Confiança</th>
               <th className="px-4 py-2.5" />
@@ -313,6 +358,13 @@ function ListaResultados({
             {resultados.map((r) => {
               const porPotencial = precoPorPotencialDoResultado(r);
               const porM2 = r.precoBRL && r.areaM2 ? r.precoBRL / r.areaM2 : null;
+              const veredito = vereditoDoResultado(r, premissas);
+              // Estação, bairro e logradouro podem ser o mesmo texto ("Praça
+              // da Árvore" é as três coisas). Repetir três vezes na mesma
+              // linha só polui.
+              const locais = [...new Set([r.bairro, r.endereco].filter(Boolean) as string[])];
+              const mostrarEstacao =
+                Boolean(r.estacaoProxima) && !locais.includes(r.estacaoProxima ?? "");
               const origem = ORIGEM_ZONA[r.origemZona] ?? ORIGEM_ZONA.DESCONHECIDA;
 
               return (
@@ -344,8 +396,15 @@ function ListaResultados({
                           fora dos portais
                         </span>
                       ) : null}
-                      {r.bairro ? <span>· {r.bairro}</span> : null}
-                      {r.endereco ? <span>· {r.endereco}</span> : null}
+                      {locais.map((texto) => (
+                        <span key={texto}>· {texto}</span>
+                      ))}
+                      {mostrarEstacao ? (
+                        <span className="text-emerald-700">
+                          · {r.estacaoProxima}
+                          {r.distanciaEstacaoM ? ` a ${r.distanciaEstacaoM} m` : ""}
+                        </span>
+                      ) : null}
                     </p>
                   </td>
                   <td className="tnum px-4 py-3 text-right whitespace-nowrap">
@@ -359,6 +418,39 @@ function ListaResultados({
                   </td>
                   <td className="tnum px-4 py-3 text-right whitespace-nowrap font-medium">
                     {porPotencial ? brl(porPotencial) : <span className="text-slate-300">—</span>}
+                  </td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    {veredito.estado === "ok" ? (
+                      <span
+                        className={
+                          veredito.folga >= 0
+                            ? "font-semibold text-emerald-700"
+                            : "font-medium text-rose-700"
+                        }
+                        title={`Preço máximo que fecha a margem alvo em ${veredito.zona}: ${brl(veredito.precoMaximo)}`}
+                      >
+                        {veredito.folga >= 0 ? "cabe" : "acima"}
+                        <span className="tnum block text-xs font-normal text-slate-500">
+                          {veredito.folga >= 0 ? "folga " : "faltam "}
+                          {brlCompacto(Math.abs(veredito.folga))}
+                        </span>
+                      </span>
+                    ) : veredito.estado === "premissas_inviaveis" ? (
+                      <span
+                        className="text-xs font-medium text-amber-700"
+                        title="Obra, custos e impostos já passam do VGV: nenhum preço de terreno fecha a margem. O problema está nas premissas, não neste anúncio."
+                      >
+                        premissas
+                        <span className="block font-normal text-slate-500">não fecham</span>
+                      </span>
+                    ) : (
+                      <span
+                        className="text-xs text-slate-300"
+                        title="Precisa de área, preço e zona confirmada para a conta fazer sentido."
+                      >
+                        —
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     <span className="flex items-center gap-1.5">

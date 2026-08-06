@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  areaPorDimensoes,
   dominio,
   extrairArea,
   extrairBairro,
+  extrairDistanciaEstacaoM,
+  extrairEstacao,
   extrairLogradouro,
   extrairPreco,
   extrairTudo,
@@ -121,5 +124,90 @@ describe("dominio", () => {
 
   it("não quebra com url inválida", () => {
     expect(dominio("nao-e-url")).toBe("desconhecido");
+  });
+});
+
+describe("área escrita de outro jeito", () => {
+  it("lê as medidas de frente e fundo", () => {
+    // Sem isto, o anúncio inteiro era descartado por "não ter área".
+    expect(extrairArea("Terreno 10x30 na Vila Mariana")).toBe(300);
+    expect(extrairArea("Terreno 12,5 x 40 m, plano")).toBe(500);
+    expect(extrairArea("Ótimo lote 20m x 50m para incorporação")).toBe(1000);
+  });
+
+  it("prefere a área declarada em m² às medidas", () => {
+    // "10x30" pode ser a testada de um dos lotes; a área escrita é a do todo.
+    expect(extrairArea("Terreno de 1.200 m², sendo 10x30 a frente")).toBe(1200);
+  });
+
+  it("converte hectare de gleba", () => {
+    expect(extrairArea("Gleba de 1,2 ha em Parelheiros")).toBe(12_000);
+    expect(extrairArea("Área de 2 hectares")).toBe(20_000);
+  });
+
+  it("ignora medida que não é de lote urbano", () => {
+    expect(areaPorDimensoes("apartamento 2x1 com 2 vagas")).toBeNull();
+    expect(areaPorDimensoes("terreno 1000x900")).toBeNull();
+  });
+});
+
+describe("estação e distância", () => {
+  it("acha a estação citada", () => {
+    expect(extrairEstacao("Terreno a 200m do Metrô Praça da Árvore")).toBe("Praça da Árvore");
+    expect(extrairEstacao("Ótima área, estação Ana Rosa a poucos passos")).toBe("Ana Rosa");
+  });
+
+  it("prefere o nome mais longo quando um contém o outro", () => {
+    expect(extrairEstacao("Terreno perto da estação Santa Cruz")).toBe("Santa Cruz");
+  });
+
+  it("aceita estação fora da lista curada", () => {
+    expect(extrairEstacao("Terreno ao lado do Metrô Barra Funda")).toBeTruthy();
+  });
+
+  it("não inventa estação onde não há", () => {
+    expect(extrairEstacao("Terreno plano com muro em toda a volta")).toBeNull();
+  });
+
+  it("lê a distância em metros e em quilômetros", () => {
+    expect(extrairDistanciaEstacaoM("Terreno a 250m do metrô")).toBe(250);
+    expect(extrairDistanciaEstacaoM("A 1,2 km da estação da CPTM")).toBe(1200);
+    expect(extrairDistanciaEstacaoM("400 metros do metrô Saúde")).toBe(400);
+  });
+
+  it("descarta distância implausível", () => {
+    expect(extrairDistanciaEstacaoM("a 15 km do metrô")).toBeNull();
+    expect(extrairDistanciaEstacaoM("a 5 m do metrô")).toBeNull();
+  });
+
+  it("não converte tempo de caminhada em distância", () => {
+    // Viraria metro só arbitrando velocidade — precisão que o anúncio não tem.
+    expect(extrairDistanciaEstacaoM("a 5 minutos a pé do metrô")).toBeNull();
+  });
+
+  it("não confunde metragem do lote com distância", () => {
+    expect(extrairDistanciaEstacaoM("Terreno de 300 m² na Vila Mariana")).toBeNull();
+  });
+});
+
+describe("estação: nome de bairro não é estação", () => {
+  it("não reporta estação quando o anúncio só cita o bairro", () => {
+    // Saúde, Lapa, Moema, Penha e Brás são bairro E estação. Sem palavra de
+    // transporte no texto, o anúncio não citou estação nenhuma.
+    expect(extrairEstacao("Terreno à venda na Saúde, 800 m², plano")).toBeNull();
+    expect(extrairEstacao("Ótimo lote na Lapa com muro")).toBeNull();
+    expect(extrairEstacao("Área em Moema para incorporação")).toBeNull();
+  });
+
+  it("reporta quando o transporte aparece no texto", () => {
+    expect(extrairEstacao("Terreno na Saúde, a 300m do metrô")).toBe("Saúde");
+    expect(extrairEstacao("Lote na Lapa, perto da estação da CPTM")).toBe("Lapa");
+  });
+});
+
+describe("palavra de transporte", () => {
+  it('não acha "trem" dentro de outra palavra', () => {
+    expect(extrairEstacao("Terreno em extremo bom estado na Saúde")).toBeNull();
+    expect(extrairEstacao("Lote tremendamente bem localizado na Lapa")).toBeNull();
   });
 });

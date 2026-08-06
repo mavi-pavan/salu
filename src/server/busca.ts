@@ -16,6 +16,7 @@ import {
 import { consultaDeEndereco, geocodificar } from "@/lib/geo/geocodificar";
 import { fonteZoneamento, resolverZona, type ResultadoZona } from "@/lib/geo/zoneamento";
 import { coeficientes, type ZonaChave } from "@/lib/zeu";
+import { calcularViabilidade, type Premissas } from "@/lib/viabilidade";
 
 export interface ParametrosBusca {
   zonas: ZonaChave[];
@@ -245,6 +246,8 @@ export async function executarBusca(
     bairro: string | null;
     latitude: number | null;
     longitude: number | null;
+    estacaoProxima: string | null;
+    distanciaEstacaoM: number | null;
     zonaDetectada: ZonaChave | null;
     origemZona: OrigemZonaChave;
     confianca: number;
@@ -306,6 +309,8 @@ export async function executarBusca(
       bairro: dados.bairro,
       latitude: c.latitude,
       longitude: c.longitude,
+      estacaoProxima: dados.estacao,
+      distanciaEstacaoM: dados.distanciaEstacaoM,
       zonaDetectada,
       origemZona,
       confianca: calcularConfianca(dados.areaM2, dados.precoBRL, origemZona),
@@ -457,6 +462,55 @@ export async function listarBuscas(limite = 20) {
 
 export type BuscaDetalhada = NonNullable<Awaited<ReturnType<typeof obterBusca>>>;
 export type ResultadoDetalhado = BuscaDetalhada["resultados"][number];
+
+/**
+ * O veredito que interessa a quem prospecta: o preço pedido cabe na conta?
+ *
+ * Reaproveita a mesma viabilidade da ficha do terreno, com as premissas
+ * configuradas — nada de segunda fórmula que diverge da primeira. O que sai é
+ * a folga entre o preço máximo que fecha a margem alvo e o que o vendedor
+ * pede. Folga positiva é oportunidade; negativa é quanto seria preciso
+ * negociar.
+ *
+ * Sem zona confirmada, não há conta: os coeficientes mudam tudo, e chutar ZEU
+ * transformaria um lote de ZM num falso achado.
+ */
+export type Veredito =
+  | { estado: "ok"; folga: number; folgaPct: number; precoMaximo: number; zona: ZonaChave }
+  /**
+   * Os custos de obra e venda sozinhos já comem o VGV: nenhum preço de terreno,
+   * nem de graça, fecha a margem. Isso é notícia sobre as premissas, não sobre
+   * o anúncio — e precisa ser dito com essas palavras, porque um traço na
+   * coluna seria lido como "faltou dado".
+   */
+  | { estado: "premissas_inviaveis"; zona: ZonaChave }
+  | { estado: "sem_dados" };
+
+export function vereditoDoResultado(
+  r: { precoBRL: number | null; areaM2: number | null; zonaDetectada: string | null },
+  premissas: Premissas,
+): Veredito {
+  if (!r.precoBRL || !r.areaM2 || r.areaM2 <= 0 || !r.zonaDetectada) return { estado: "sem_dados" };
+
+  const zona = r.zonaDetectada as ZonaChave;
+  const conta = calcularViabilidade(
+    { zona, areaTerreno: r.areaM2, precoPedido: r.precoBRL },
+    premissas,
+  );
+
+  if (!Number.isFinite(conta.precoMaximoTerreno) || conta.precoMaximoTerreno <= 0) {
+    return { estado: "premissas_inviaveis", zona };
+  }
+  if (conta.folga == null) return { estado: "sem_dados" };
+
+  return {
+    estado: "ok",
+    folga: conta.folga,
+    folgaPct: (conta.folga / r.precoBRL) * 100,
+    precoMaximo: conta.precoMaximoTerreno,
+    zona,
+  };
+}
 
 /**
  * R$ por m² de potencial construtivo — a métrica que permite comparar

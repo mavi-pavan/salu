@@ -37,6 +37,8 @@ export default async function NovoTerrenoPage({
         precoPedido: resultado.precoBRL,
         latitude: resultado.latitude,
         longitude: resultado.longitude,
+        estacaoProxima: resultado.estacaoProxima ?? "",
+        distanciaEstacaoM: resultado.distanciaEstacaoM,
         zona: resultado.zonaDetectada ?? "A_VERIFICAR",
         origem: "PORTAL",
         responsavelId: usuario.id,

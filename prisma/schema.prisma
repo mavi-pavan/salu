@@ -447,6 +447,12 @@ model ResultadoBusca {
   latitude  Float?
   longitude Float?
 
+  /// Estação citada no anúncio e a distância declarada até ela. A ZEU é uma
+  /// faixa em torno da estação, então isso é o melhor indício de eixo que um
+  /// anúncio oferece — e já vai preenchido quando o resultado vira terreno.
+  estacaoProxima    String?
+  distanciaEstacaoM Int?
+
   zonaDetectada Zona?
   origemZona    OrigemZona @default(DESCONHECIDA)
   /// 0 a 1: quanto do que interessa (área, preço, zona) foi possível extrair.
