@@ -114,6 +114,11 @@ export default async function ResultadosPage({ params }: { params: Promise<{ id:
         />
         <Metrica rotulo="Com área identificada" valor={numero(comArea.length)} detalhe={`${m2(areaTotal)} somados`} />
         <Metrica
+          rotulo="Novos"
+          valor={numero(ativos.filter((r) => r.novo).length)}
+          detalhe="não apareceram em busca anterior"
+        />
+        <Metrica
           rotulo="Zona confirmada"
           valor={numero(
             ativos.filter((r) => r.origemZona === "GEOSAMPA" || r.origemZona === "GEOJSON").length,
@@ -322,6 +327,14 @@ function ListaResultados({
                       {r.titulo}
                     </a>
                     <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                      {r.novo ? (
+                        <span
+                          className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800"
+                          title="Não apareceu em nenhuma busca anterior"
+                        >
+                          novo
+                        </span>
+                      ) : null}
                       <span>{r.fonte}</span>
                       {!ehPortalConhecido(r.fonte) ? (
                         <span

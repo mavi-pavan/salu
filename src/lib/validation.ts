@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { ZONAS } from "./zeu";
+import { VARIACOES } from "./busca/consultas";
 
 /** "" -> null; aceita vírgula decimal digitada por engano. */
 const paraNumero = (v: unknown): unknown => {
@@ -272,6 +273,7 @@ export const buscaSchema = z
   .object({
     zonas: z.array(z.enum(ZONAS)).max(12),
     regioes: z.array(z.string().max(80)).max(20),
+    variacoes: z.array(z.enum(VARIACOES)).max(3),
     areaMin: numeroOpcional(0, 1_000_000),
     areaMax: numeroOpcional(0, 1_000_000),
     precoMax: numeroOpcional(0, 10_000_000_000),

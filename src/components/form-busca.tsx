@@ -12,8 +12,31 @@ import { Aviso, Campo, Cartao, CartaoCabecalho, CartaoCorpo, Entrada, Selecao } 
 
 const ZONAS_BUSCAVEIS = ["ZEU", "ZEUa", "ZEUP", "ZEUPa", "ZEM", "ZEMP"] as const;
 
-/** Espelha MAX_CONSULTAS do servidor (src/server/busca.ts). */
+/** Espelha MAX_CONSULTAS de src/lib/busca/consultas.ts. */
 const MAX_REGIOES = 20;
+
+const VARIACOES = [
+  {
+    chave: "estacao",
+    titulo: "Pelas estações do eixo",
+    ajuda:
+      "A ZEU é uma faixa em torno da estação, não o bairro inteiro — e o anúncio de terreno para incorporação cita a estação porque é o argumento de venda dele. É a consulta que mais acerta o alvo.",
+    padrao: true,
+  },
+  {
+    chave: "bairro",
+    titulo: "Pelo bairro inteiro",
+    ajuda: "Rede mais larga: traz também o que está longe do eixo.",
+    padrao: true,
+  },
+  {
+    chave: "incorporacao",
+    titulo: "Por termo de incorporação",
+    ajuda:
+      '"Área para incorporação" — como anuncia quem já sabe o que tem em mãos. Costuma ser lote grande e sem benfeitoria.',
+    padrao: false,
+  },
+] as const;
 
 export function FormBusca({
   regioesPorSetor,
@@ -26,6 +49,28 @@ export function FormBusca({
 }) {
   const [estado, acao] = useActionState(buscarNaInternet, ESTADO_INICIAL);
   const [selecionadas, setSelecionadas] = useState<string[]>([]);
+  const [variacoes, setVariacoes] = useState<string[]>(
+    VARIACOES.filter((v) => v.padrao).map((v) => v.chave),
+  );
+
+  /**
+   * Quantas consultas isto vai disparar. Espelha a repartição do servidor: uma
+   * consulta por bairro, uma por termo de incorporação e uma por estação, tudo
+   * limitado ao teto. Aparece na tela porque cada consulta consome cota.
+   */
+  const porRegiao = regioesPorSetor.flatMap((g) => g.regioes);
+  const consultasPrevistas = Math.min(
+    selecionadas.reduce((soma, nome) => {
+      const regiao = porRegiao.find((r) => r.nome === nome);
+      return (
+        soma +
+        (variacoes.includes("bairro") ? 1 : 0) +
+        (variacoes.includes("incorporacao") ? 1 : 0) +
+        (variacoes.includes("estacao") ? (regiao?.estacoes.length ?? 0) : 0)
+      );
+    }, 0),
+    MAX_REGIOES,
+  );
 
   return (
     <form action={acao}>
@@ -109,13 +154,50 @@ export function FormBusca({
             </Campo>
           </div>
 
+          {/* --- Como procurar --- */}
+          <div>
+            <p className="mb-2 text-sm font-medium text-slate-700">Como procurar</p>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {VARIACOES.map((v) => (
+                <label
+                  key={v.chave}
+                  className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-slate-200 px-3 py-2.5 transition-colors hover:bg-slate-50 has-checked:border-emerald-300 has-checked:bg-emerald-50/60"
+                >
+                  <input
+                    type="checkbox"
+                    name="variacoes"
+                    value={v.chave}
+                    checked={variacoes.includes(v.chave)}
+                    onChange={(e) =>
+                      setVariacoes((atual) =>
+                        e.target.checked
+                          ? [...atual, v.chave]
+                          : atual.filter((c) => c !== v.chave),
+                      )
+                    }
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium text-slate-800">{v.titulo}</span>
+                    <span className="block text-xs text-slate-500">{v.ajuda}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            {!variacoes.length ? (
+              <p className="mt-2 text-xs text-amber-700">
+                Sem nenhuma marcada, a busca usa o padrão: estações e bairro.
+              </p>
+            ) : null}
+          </div>
+
           {/* --- Regiões --- */}
           <details className="rounded-lg border border-slate-200" open={selecionadas.length > 0}>
             <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-slate-700">
               Regiões
               <span className="ml-2 font-normal text-slate-500">
                 {selecionadas.length
-                  ? `${selecionadas.length} marcada(s) — ${selecionadas.length} consulta(s)`
+                  ? `${selecionadas.length} marcada(s) — ${consultasPrevistas} consulta(s)`
                   : "nenhuma marcada: amostra automática pela cidade"}
               </span>
             </summary>
@@ -123,8 +205,9 @@ export function FormBusca({
             <div className="border-t border-slate-200 px-4 py-3">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <p className="text-xs text-slate-500">
-                  Cada região marcada vira <strong>uma consulta</strong>. Todas as marcadas são
-                  pesquisadas — o limite de consultas ao lado só vale quando você não marca nenhuma.
+                  Todas as marcadas são pesquisadas. Com as estações ligadas, uma região rende mais
+                  de uma consulta — e a cota é repartida em rodadas, de modo que toda região marcada
+                  recebe a primeira consulta antes de qualquer uma receber a segunda.
                 </p>
                 {selecionadas.length ? (
                   <button

@@ -24,6 +24,7 @@ export async function buscarNaInternet(
       ...objetoDoForm(formData),
       zonas: formData.getAll("zonas").map(String),
       regioes: formData.getAll("regioes").map(String),
+      variacoes: formData.getAll("variacoes").map(String),
     };
 
     const analise = buscaSchema.safeParse(bruto);
@@ -43,6 +44,7 @@ export async function buscarNaInternet(
         exigirArea: dados.exigirArea,
         exigirZonaConfirmada: dados.exigirZonaConfirmada,
         maxConsultas: dados.maxConsultas ?? 6,
+        variacoes: dados.variacoes,
       },
       usuario.id,
     );

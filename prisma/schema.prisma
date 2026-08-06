@@ -452,6 +452,13 @@ model ResultadoBusca {
   /// 0 a 1: quanto do que interessa (área, preço, zona) foi possível extrair.
   confianca     Float      @default(0)
 
+  /// Host + caminho, sem query string: o mesmo anúncio volta do buscador com
+  /// utm diferente a cada busca, e sem normalizar nada seria sempre novidade.
+  chaveUrl   String   @default("")
+  /// Falso quando este anúncio já apareceu em alguma busca anterior. É o que
+  /// permite rodar a mesma busca toda semana e olhar só o que entrou.
+  novo       Boolean  @default(true)
+
   descartado Boolean  @default(false)
   terrenoId  String? /// preenchido quando o resultado vira terreno no funil
   createdAt  DateTime @default(now())
@@ -460,6 +467,7 @@ model ResultadoBusca {
 
   @@unique([buscaId, url])
   @@index([buscaId, descartado])
+  @@index([chaveUrl])
 }
 
 /// Cache de geocodificação. O Nominatim pede no máximo 1 req/s — sem cache,

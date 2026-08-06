@@ -11,6 +11,7 @@ import {
   portais,
   regioesDescartadas,
   semFiltroDeSites,
+  type Variacao,
 } from "@/lib/busca/consultas";
 import { consultaDeEndereco, geocodificar } from "@/lib/geo/geocodificar";
 import { fonteZoneamento, resolverZona, type ResultadoZona } from "@/lib/geo/zoneamento";
@@ -28,6 +29,8 @@ export interface ParametrosBusca {
   /** Descarta anúncio cuja zona não pôde ser confirmada. */
   exigirZonaConfirmada: boolean;
   maxConsultas: number;
+  /** Como perguntar: por bairro, por estação do eixo, por termo de incorporação. */
+  variacoes: Variacao[];
 }
 
 /**
@@ -245,6 +248,8 @@ export async function executarBusca(
     zonaDetectada: ZonaChave | null;
     origemZona: OrigemZonaChave;
     confianca: number;
+    chaveUrl: string;
+    novo: boolean;
   }> = [];
 
   let descartadosZona = 0;
@@ -304,7 +309,25 @@ export async function executarBusca(
       zonaDetectada,
       origemZona,
       confianca: calcularConfianca(dados.areaM2, dados.precoBRL, origemZona),
+      chaveUrl: chaveDeUrl(item.url),
+      novo: true, // ajustado abaixo, contra o histórico
     });
+  }
+
+  // Novidade só faz sentido contra o que já foi visto: rodar a mesma busca
+  // toda semana e reler os mesmos vinte anúncios é o que faz alguém desistir
+  // da rotina. A consulta acontece antes de gravar esta busca, senão os
+  // próprios resultados dela se marcariam como repetidos.
+  if (aceitos.length) {
+    const jaVistos = await prisma.resultadoBusca.findMany({
+      where: { chaveUrl: { in: aceitos.map((a) => a.chaveUrl) } },
+      select: { chaveUrl: true },
+      distinct: ["chaveUrl"],
+    });
+    const conhecidas = new Set(jaVistos.map((r) => r.chaveUrl));
+    for (const aceito of aceitos) {
+      aceito.novo = !conhecidas.has(aceito.chaveUrl);
+    }
   }
 
   // Geocodificação silenciosamente quebrada é o pior cenário: tudo vira
@@ -414,7 +437,9 @@ export async function obterBusca(id: string) {
     where: { id },
     include: {
       criadoPor: { select: { name: true, email: true } },
-      resultados: { orderBy: [{ confianca: "desc" }, { createdAt: "asc" }] },
+      // Novidade primeiro: é o que interessa em quem repete a busca semana
+      // após semana.
+      resultados: { orderBy: [{ novo: "desc" }, { confianca: "desc" }, { createdAt: "asc" }] },
     },
   });
 }

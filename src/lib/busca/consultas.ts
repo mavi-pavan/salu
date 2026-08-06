@@ -6,10 +6,32 @@
  * some com bairros inteiros sem ninguém perceber.
  */
 
-import { REGIOES, SETORES } from "./regioes";
+import { REGIOES, SETORES, type Regiao } from "./regioes";
 
 /** Teto absoluto de consultas por busca, para não torrar a cota do provedor. */
 export const MAX_CONSULTAS = 20;
+
+/**
+ * Cada jeito de perguntar acha um tipo diferente de anúncio.
+ *
+ *   bairro       "terreno à venda Vila Mariana" — o bairro inteiro, inclusive
+ *                o que está longe do eixo. É a rede mais larga.
+ *   estacao      "terreno à venda estação Praça da Árvore" — a ZEU é uma faixa
+ *                em torno da estação, e o anúncio de terreno de incorporação
+ *                cita a estação porque é o argumento de venda dele. Esta é a
+ *                consulta que mira no alvo.
+ *   incorporacao "área para incorporação Vila Mariana" — como o vendedor que
+ *                já sabe o que tem em mãos anuncia. Costuma ser lote grande,
+ *                sem benfeitoria, às vezes sem preço no anúncio.
+ */
+export const VARIACOES = ["bairro", "estacao", "incorporacao"] as const;
+export type Variacao = (typeof VARIACOES)[number];
+
+export const VARIACOES_PADRAO: Variacao[] = ["bairro", "estacao"];
+
+export function ehVariacao(valor: string): valor is Variacao {
+  return (VARIACOES as readonly string[]).includes(valor);
+}
 
 const PORTAIS_PADRAO = [
   "vivareal.com.br",
@@ -26,6 +48,8 @@ export interface EntradaConsultas {
   termosExtras: string | null;
   /** Só governa a amostra automática, quando nenhuma região foi marcada. */
   maxConsultas: number;
+  /** Vazio = usa o padrão. */
+  variacoes?: Variacao[];
 }
 
 export function portais(): string[] {
@@ -101,15 +125,78 @@ export function semFiltroDeSites(consulta: string): string {
  */
 export const MAX_SITES_NA_CONSULTA = 4;
 
+function regiaoPorNome(nome: string): Regiao | undefined {
+  return REGIOES.find((r) => r.nome === nome);
+}
+
+/**
+ * As consultas de uma região, na ordem em que merecem a cota.
+ *
+ * O bairro vem primeiro por ser a rede mais larga; as estações depois, uma a
+ * uma. Assim, quando a cota aperta, o que se perde são estações da segunda
+ * volta — nunca a cobertura básica de uma região que o usuário marcou.
+ */
+function consultasDaRegiao(nome: string, variacoes: Variacao[]): string[] {
+  const saida: string[] = [];
+  if (variacoes.includes("bairro")) saida.push(`terreno à venda ${nome} São Paulo`);
+  if (variacoes.includes("incorporacao")) {
+    saida.push(`área para incorporação ${nome} São Paulo`);
+  }
+  if (variacoes.includes("estacao")) {
+    for (const estacao of regiaoPorNome(nome)?.estacoes ?? []) {
+      saida.push(`terreno à venda estação ${estacao} São Paulo`);
+    }
+  }
+  return saida;
+}
+
+/**
+ * Distribui a cota em rodadas, uma região por vez.
+ *
+ * Sem isto, a primeira região marcada consumiria as vinte consultas com suas
+ * estações e as outras dezenove ficariam sem nenhuma — quem marcou dez bairros
+ * receberia resultado de um.
+ */
+function porRodadas(porRegiao: string[][], teto: number): string[] {
+  const saida: string[] = [];
+  for (let volta = 0; saida.length < teto; volta += 1) {
+    let adicionou = false;
+    for (const lista of porRegiao) {
+      const consulta = lista[volta];
+      if (!consulta) continue;
+      saida.push(consulta);
+      adicionou = true;
+      if (saida.length >= teto) break;
+    }
+    if (!adicionou) break;
+  }
+  return saida;
+}
+
 export function montarConsultas(entrada: EntradaConsultas): string[] {
   const lista = portais().slice(0, MAX_SITES_NA_CONSULTA);
   const filtroSite = lista.length ? `(${lista.map((p) => `site:${p}`).join(" OR ")})` : "";
+  const variacoes = entrada.variacoes?.length ? entrada.variacoes : VARIACOES_PADRAO;
 
-  return regioesDaBusca(entrada).map((regiao) =>
-    ["terreno à venda", regiao, "São Paulo", "m²", entrada.termosExtras ?? "", filtroSite]
+  const porRegiao = regioesDaBusca(entrada).map((nome) => consultasDaRegiao(nome, variacoes));
+
+  // Sem região marcada, `maxConsultas` é o orçamento total pedido pelo usuário
+  // — e ele fala de consultas, não de regiões. Com regiões marcadas, todas
+  // entram e o teto é o absoluto.
+  const teto = entrada.regioes.length
+    ? MAX_CONSULTAS
+    : Math.max(1, Math.min(entrada.maxConsultas, MAX_CONSULTAS));
+
+  return porRodadas(porRegiao, teto).map((base) =>
+    [base, "m²", entrada.termosExtras ?? "", filtroSite]
       .filter(Boolean)
       .join(" ")
       .replace(/\s+/g, " ")
       .trim(),
   );
+}
+
+/** Quantas consultas a busca vai disparar com esses filtros. */
+export function totalDeConsultas(entrada: EntradaConsultas): number {
+  return montarConsultas(entrada).length;
 }
