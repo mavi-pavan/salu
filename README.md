@@ -84,10 +84,12 @@ ADMIN_EMAILS="voce@exemplo.com"  # seu e-mail vira admin no primeiro login
 
 ```bash
 npm run db:migrate   # aplica as migrations
-npm run db:seed      # cria a configuração, o admin e 5 terrenos de exemplo
+npm run db:seed      # opcional: 5 terrenos de exemplo para explorar
 ```
 
-Para subir sem os exemplos: `SEED_EXEMPLOS=false npm run db:seed`.
+O seed é opcional. Sem ele o app funciona igual, só começa vazio — o primeiro
+login com um e-mail de `ADMIN_EMAILS` já cria o usuário como administrador.
+Para os exemplos sem sobrescrever nada: `SEED_EXEMPLOS=false npm run db:seed`.
 
 ### 4. Subir
 
@@ -220,16 +222,17 @@ GeoJSON em memória. O ponto de troca é a função `resolverZona` em
 
 3. Faça o deploy.
 
-### 3. Preparar o banco de produção
+**Não precisa rodar nada da sua máquina.** O `npm run build` executa
+`prisma migrate deploy` antes de compilar, então a Vercel cria as tabelas no
+Neon sozinha, a cada deploy. E o banco não precisa de seed: o primeiro login
+com um endereço listado em `ADMIN_EMAILS` cria o usuário já como administrador,
+e as configurações caem no padrão até alguém mudá-las na tela.
 
-Rode uma vez, da sua máquina, com o `.env` apontando para o Neon:
+> Consequência: se o banco estiver fora do ar, o build falha em vez de subir
+> uma versão que quebraria em produção. É proposital.
 
-```bash
-npm run db:deploy   # aplica as migrations
-npm run db:seed     # cria configuração e admin
-```
-
-Para produção sem os terrenos de exemplo: `SEED_EXEMPLOS=false npm run db:seed`.
+Quer os 5 terrenos de exemplo em produção? Rode `npm run db:seed` da sua
+máquina, com o `.env` apontando para o Neon. É opcional.
 
 ### 4. Convidar o time
 
@@ -249,7 +252,7 @@ do envio do e-mail.
 
 ```bash
 npm run dev         # desenvolvimento
-npm run build       # build de produção
+npm run build       # build de produção (aplica as migrations antes de compilar)
 npm run start       # servidor de produção
 npm run typecheck   # TypeScript
 npm run lint        # ESLint
