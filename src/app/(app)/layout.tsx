@@ -18,10 +18,7 @@ export default async function LayoutApp({ children }: { children: React.ReactNod
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-sm font-bold text-white">
               S
             </span>
-            <span className="leading-tight">
-              <span className="block text-sm font-semibold text-slate-900">Salu</span>
-              <span className="block text-xs text-slate-500">Terrenos ZEU · São Paulo</span>
-            </span>
+            <span className="text-base font-semibold text-slate-900">Salu</span>
           </Link>
 
           <div className="flex items-center gap-3">

@@ -25,10 +25,7 @@ export default async function EntrarPage() {
             S
           </span>
           <h1 className="text-3xl font-semibold tracking-tight text-slate-900">Salu</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Prospecção de terrenos em Zona Eixo · São Paulo
-          </p>
-          <p className="mt-4 text-sm text-slate-500">
+          <p className="mt-3 text-sm text-slate-500">
             Acesso restrito à equipe. Informe seu e-mail e enviaremos um link de acesso.
           </p>
         </div>
