@@ -12,7 +12,7 @@ import {
   semFiltroDeSites,
 } from "@/lib/busca/consultas";
 import { consultaDeEndereco, geocodificar } from "@/lib/geo/geocodificar";
-import { resolverZona, zoneamentoConfigurado } from "@/lib/geo/zoneamento";
+import { fonteZoneamento, resolverZona, type ResultadoZona } from "@/lib/geo/zoneamento";
 import { coeficientes, type ZonaChave } from "@/lib/zeu";
 
 export interface ParametrosBusca {
@@ -32,6 +32,32 @@ export interface ParametrosBusca {
 const RESULTADOS_POR_CONSULTA = 20;
 const LIMITE_GEOCODE = Number(process.env.BUSCA_MAX_GEOCODE ?? 25);
 const PALAVRAS_RELEVANTES = ["terreno", "lote", "gleba", "área para", "area para"];
+
+/**
+ * Consultas simultâneas ao zoneamento.
+ *
+ * A geocodificação é serializada por obrigação (o Nominatim pede 1 req/s), mas
+ * o zoneamento não tem essa restrição — deixar as duas em série somaria uns
+ * 15 s a cada busca e encostaria no limite de tempo da função na Vercel. Seis
+ * é folgado para o serviço da Prefeitura e corta a espera para quase nada.
+ */
+const CONCORRENCIA_ZONA = 6;
+
+/** Origem da zona, espelhando o enum OrigemZona do banco. */
+type OrigemZonaChave = "GEOSAMPA" | "GEOJSON" | "TEXTO" | "PRESUMIDA" | "DESCONHECIDA";
+
+/** Aplica `tarefa` a todos os itens, mas com no máximo `limite` em voo. */
+async function emLotes<T, R>(
+  itens: T[],
+  limite: number,
+  tarefa: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const saida: R[] = [];
+  for (let i = 0; i < itens.length; i += limite) {
+    saida.push(...(await Promise.all(itens.slice(i, i + limite).map(tarefa))));
+  }
+  return saida;
+}
 
 /** Ignora query string e barra final: o mesmo anúncio chega com utm diferente. */
 function chaveDeUrl(url: string): string {
@@ -113,20 +139,13 @@ export async function executarBusca(
     return true;
   });
 
-  const aceitos: Array<{
-    titulo: string;
-    url: string;
-    fonte: string;
-    trecho: string | null;
-    areaM2: number | null;
-    precoBRL: number | null;
-    endereco: string | null;
-    bairro: string | null;
+  // --- Passo 1: filtros baratos e geocodificação (serializada por política do
+  // Nominatim, então é o trecho mais lento da busca). ---
+  const candidatos: Array<{
+    item: ItemWeb;
+    dados: ReturnType<typeof extrairTudo>;
     latitude: number | null;
     longitude: number | null;
-    zonaDetectada: ZonaChave | null;
-    origemZona: "GEOJSON" | "TEXTO" | "PRESUMIDA" | "DESCONHECIDA";
-    confianca: number;
   }> = [];
 
   let geocodificados = 0;
@@ -140,8 +159,6 @@ export async function executarBusca(
 
     let latitude: number | null = null;
     let longitude: number | null = null;
-    let zonaDetectada: ZonaChave | null = null;
-    let origemZona: "GEOJSON" | "TEXTO" | "PRESUMIDA" | "DESCONHECIDA" = "DESCONHECIDA";
 
     const consultaGeo = consultaDeEndereco({ endereco: dados.endereco, bairro: dados.bairro });
     if (consultaGeo && geocodificados < LIMITE_GEOCODE) {
@@ -151,12 +168,53 @@ export async function executarBusca(
         geocodificadosComSucesso += 1;
         latitude = ponto.latitude;
         longitude = ponto.longitude;
-        const resolvida = await resolverZona(ponto.latitude, ponto.longitude);
-        if (resolvida) {
-          zonaDetectada = resolvida.zona;
-          origemZona = "GEOJSON";
-        }
       }
+    }
+
+    candidatos.push({ item, dados, latitude, longitude });
+  }
+
+  // --- Passo 2: zona de cada coordenada, em paralelo. ---
+  const zonasResolvidas = await emLotes(candidatos, CONCORRENCIA_ZONA, async (c) =>
+    c.latitude != null && c.longitude != null
+      ? await resolverZona(c.latitude, c.longitude)
+      : null,
+  );
+
+  // --- Passo 3: filtro de zona e montagem do resultado. ---
+  const aceitos: Array<{
+    titulo: string;
+    url: string;
+    fonte: string;
+    trecho: string | null;
+    areaM2: number | null;
+    precoBRL: number | null;
+    endereco: string | null;
+    bairro: string | null;
+    latitude: number | null;
+    longitude: number | null;
+    zonaDetectada: ZonaChave | null;
+    origemZona: OrigemZonaChave;
+    confianca: number;
+  }> = [];
+
+  let descartadosZona = 0;
+  let falhasZoneamento = 0;
+  let motivoZoneamento: string | null = null;
+
+  for (const [indice, c] of candidatos.entries()) {
+    const { item, dados } = c;
+    const resolvida: ResultadoZona | null = zonasResolvidas[indice] ?? null;
+
+    let zonaDetectada: ZonaChave | null = null;
+    let origemZona: OrigemZonaChave = "DESCONHECIDA";
+
+    if (resolvida?.estado === "encontrada") {
+      zonaDetectada = resolvida.zona;
+      origemZona = resolvida.fonte;
+    } else if (resolvida?.estado === "indisponivel") {
+      falhasZoneamento += 1;
+      motivoZoneamento ??= resolvida.motivo;
     }
 
     if (!zonaDetectada && dados.zonaTexto) {
@@ -167,7 +225,13 @@ export async function executarBusca(
       origemZona = "PRESUMIDA";
     }
 
-    if (!passaZona(zonaDetectada, origemZona, params)) continue;
+    if (!passaZona(zonaDetectada, params)) {
+      // Reprovado pela camada oficial é informação, não silêncio: sem esta
+      // contagem, uma busca que acha 40 lotes e descarta 38 por não serem ZEU
+      // aparece na tela como "nenhum anúncio passou no filtro".
+      if (origemZona === "GEOSAMPA" || origemZona === "GEOJSON") descartadosZona += 1;
+      continue;
+    }
 
     aceitos.push({
       titulo: item.titulo.slice(0, 300),
@@ -178,8 +242,8 @@ export async function executarBusca(
       precoBRL: dados.precoBRL,
       endereco: dados.endereco,
       bairro: dados.bairro,
-      latitude,
-      longitude,
+      latitude: c.latitude,
+      longitude: c.longitude,
       zonaDetectada,
       origemZona,
       confianca: calcularConfianca(dados.areaM2, dados.precoBRL, origemZona),
@@ -192,6 +256,12 @@ export async function executarBusca(
   if (!erro && geocodificados > 0 && geocodificadosComSucesso === 0) {
     erro =
       "Nenhum endereço pôde ser geocodificado — as zonas não foram confirmadas. Verifique NOMINATIM_USER_AGENT (o Nominatim recusa requisições sem contato identificado).";
+  }
+
+  // O mesmo vale para o zoneamento: se a camada não respondeu, ninguém pode
+  // concluir que os lotes não são ZEU — eles ficaram sem conferência.
+  if (!erro && motivoZoneamento) {
+    erro = `A camada de zoneamento não respondeu em ${falhasZoneamento} consulta(s); essas zonas ficaram "a verificar". Motivo: ${motivoZoneamento}`;
   }
 
   const busca = await prisma.busca.create({
@@ -207,6 +277,7 @@ export async function executarBusca(
       consultas,
       totalBruto: brutos.length,
       totalAceito: aceitos.length,
+      descartadosZona,
       erro,
       resultados: { create: aceitos },
     },
@@ -235,11 +306,7 @@ function passaPreco(preco: number | null, params: ParametrosBusca): boolean {
   return true;
 }
 
-function passaZona(
-  zona: ZonaChave | null,
-  origem: "GEOJSON" | "TEXTO" | "PRESUMIDA" | "DESCONHECIDA",
-  params: ParametrosBusca,
-): boolean {
+function passaZona(zona: ZonaChave | null, params: ParametrosBusca): boolean {
   if (!params.zonas.length) return true;
 
   if (zona) return params.zonas.includes(zona);
@@ -251,9 +318,15 @@ function passaZona(
 function calcularConfianca(
   area: number | null,
   preco: number | null,
-  origem: "GEOJSON" | "TEXTO" | "PRESUMIDA" | "DESCONHECIDA",
+  origem: OrigemZonaChave,
 ): number {
-  const pesoZona = { GEOJSON: 0.35, TEXTO: 0.2, PRESUMIDA: 0.08, DESCONHECIDA: 0 }[origem];
+  const pesoZona = {
+    GEOSAMPA: 0.35,
+    GEOJSON: 0.35,
+    TEXTO: 0.2,
+    PRESUMIDA: 0.08,
+    DESCONHECIDA: 0,
+  }[origem];
   const valor = (area != null ? 0.45 : 0) + (preco != null ? 0.2 : 0) + pesoZona;
   return Math.round(valor * 100) / 100;
 }
@@ -316,7 +389,7 @@ export function estadoDaBusca() {
   return {
     provedor: provedorConfigurado(),
     demo: ehDemo(),
-    zoneamento: zoneamentoConfigurado(),
+    zoneamento: fonteZoneamento(),
     portais: portais(),
   };
 }

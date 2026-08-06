@@ -403,6 +403,10 @@ model Busca {
   consultas    String[] /// as queries realmente disparadas, para auditar o resultado
   totalBruto   Int      @default(0) /// itens retornados pelo provedor
   totalAceito  Int      @default(0) /// itens que passaram nos filtros
+  /// Anúncios cuja zona foi confirmada e ficou fora do filtro. Esses não viram
+  /// ResultadoBusca, então o número não é derivável — e sem ele "não achei
+  /// nada" fica indistinguível de "achei e o zoneamento reprovou".
+  descartadosZona Int   @default(0)
   erro         String?
   createdAt    DateTime @default(now())
 
@@ -413,7 +417,8 @@ model Busca {
 }
 
 enum OrigemZona {
-  GEOJSON /// point-in-polygon na camada oficial de zoneamento
+  GEOJSON /// point-in-polygon numa camada de zoneamento em arquivo local
+  GEOSAMPA /// consulta ao WFS oficial da Prefeitura, na hora da busca
   TEXTO /// a própria página do anúncio menciona a zona
   PRESUMIDA /// heurística por região/eixo
   DESCONHECIDA

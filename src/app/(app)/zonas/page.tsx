@@ -234,6 +234,12 @@ export default async function ZonasPage() {
           descricao="O mapa erra na borda do perímetro, e a borda é justamente onde estão as barganhas."
         />
         <CartaoCorpo>
+          <p className="mb-4 rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            Na busca, o Salu já cruza a coordenada de cada anúncio com a camada oficial do GeoSampa
+            e mostra a zona como <strong>confirmada</strong>. Isso serve para triagem — vale pelo
+            endereço do anúncio, que nem sempre é o do lote. Para decidir compra, o roteiro abaixo
+            continua sendo o caminho.
+          </p>
           <ol className="flex list-decimal flex-col gap-3 pl-5 text-sm text-slate-700">
             <li>
               Pegue o <strong>número do contribuinte (SQL)</strong> no carnê do IPTU ou na matrícula.

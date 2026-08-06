@@ -18,9 +18,11 @@ const MAX_REGIOES = 20;
 export function FormBusca({
   regioesPorSetor,
   zoneamentoAtivo,
+  zoneamentoRotulo,
 }: {
   regioesPorSetor: Array<{ setor: string; regioes: Regiao[] }>;
   zoneamentoAtivo: boolean;
+  zoneamentoRotulo: string;
 }) {
   const [estado, acao] = useActionState(buscarNaInternet, ESTADO_INICIAL);
   const [selecionadas, setSelecionadas] = useState<string[]>([]);
@@ -251,7 +253,7 @@ export function FormBusca({
                 Só aceitar zona confirmada no zoneamento
                 <span className="block text-xs text-slate-400">
                   {zoneamentoAtivo
-                    ? "Cruza a coordenada do anúncio com a camada oficial carregada."
+                    ? `Descarta o que não for confirmado pela ${zoneamentoRotulo}. Anúncio sem endereço legível não é geocodificado — e cai fora com esta opção marcada.`
                     : "Indisponível: nenhuma camada de zoneamento configurada (ver README)."}
                 </span>
               </span>

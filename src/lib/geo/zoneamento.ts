@@ -1,43 +1,47 @@
 /**
  * Resolve a zona de uma coordenada contra a camada oficial de zoneamento.
  *
- * O app funciona sem esta camada — nesse caso a zona fica "a verificar" e o
- * link do GeoSampa aparece na tela. Mas com ela, a busca passa a filtrar de
- * verdade por ZEU, em vez de presumir pela região.
+ * Há duas fontes possíveis, nesta ordem:
  *
- * Como habilitar:
- *   1. Baixe a camada de zoneamento (LPUOS) no GeoSampa e converta para
- *      GeoJSON em EPSG:4326, filtrando só as zonas de eixo — o arquivo
- *      completo da cidade é grande demais para carregar a cada requisição.
- *   2. Salve em data/zoneamento.geojson (ou publique numa URL).
- *   3. Aponte ZONEAMENTO_GEOJSON para o caminho ou a URL.
+ *   1. GeoJSON local, quando `ZONEAMENTO_GEOJSON` estiver apontado para um
+ *      arquivo ou URL. É o modo offline: mais rápido, sem depender de
+ *      serviço externo, mas congela no dia em que o arquivo foi gerado.
+ *   2. WFS do GeoSampa (padrão, nada a configurar). Consulta a camada da
+ *      Prefeitura a cada coordenada, sempre na versão vigente.
  *
- * Em produção com muitos polígonos, a alternativa correta é PostGIS com
- * ST_Contains — ver README.
+ * O GeoJSON tem precedência justamente porque é explícito: se alguém se deu ao
+ * trabalho de apontar um arquivo, é esse que deve valer.
+ *
+ * Nada aqui devolve zona errada por omissão: quando a fonte falha, o resultado
+ * é `indisponivel` com o motivo, e a busca marca o anúncio como "a verificar"
+ * em vez de afirmar que não é ZEU.
  */
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { ZONAS, type ZonaChave } from "@/lib/zeu";
-
-type Posicao = [number, number];
-type Anel = Posicao[];
+import { geoSampaAtivo, camadaConfigurada, zonaNoGeoSampa } from "./geosampa";
+import {
+  calcularBbox,
+  dentroDaBbox,
+  extrairPoligonos,
+  pontoEmAlgum,
+  type Bbox,
+  type Poligono,
+} from "./poligono";
 
 interface FeatureZona {
   zona: ZonaChave;
   bruto: string;
-  aneis: Anel[][];
-  bbox: [number, number, number, number];
+  poligonos: Poligono[];
+  bbox: Bbox;
 }
 
 interface GeoJSONFeature {
   type: string;
   properties?: Record<string, unknown> | null;
-  geometry?: {
-    type: string;
-    coordinates: unknown;
-  } | null;
+  geometry?: { type: string; coordinates: unknown } | null;
 }
 
 const CAMPOS_CANDIDATOS = ["zl_zona", "zona", "ZONA", "sigla", "SIGLA", "tx_zona", "zn_sigla"];
@@ -45,37 +49,104 @@ const CAMPOS_CANDIDATOS = ["zl_zona", "zona", "ZONA", "sigla", "SIGLA", "tx_zona
 let cache: FeatureZona[] | null = null;
 let carregando: Promise<FeatureZona[]> | null = null;
 
-export function zoneamentoConfigurado(): boolean {
-  return Boolean(process.env.ZONEAMENTO_GEOJSON);
+// ---------------------------------------------------------------------------
+// Fonte em uso
+// ---------------------------------------------------------------------------
+
+export type FonteZona = "GEOSAMPA" | "GEOJSON";
+
+export interface DescricaoFonte {
+  ativo: boolean;
+  chave: "geojson" | "geosampa" | "nenhuma";
+  /** Texto curto para etiqueta e ajuda de formulário. */
+  rotulo: string;
+  /** Camada consultada no GeoSampa, quando é essa a fonte. */
+  camada: string | null;
+  /** Arquivo/URL do GeoJSON local, quando é essa a fonte. */
+  arquivo: string | null;
 }
 
-/** "ZEU (a)", "zeu-p", "ZEIS-2" -> chave do enum. */
-export function normalizarZona(bruto: string): ZonaChave {
-  const limpo = bruto
+export function fonteZoneamento(): DescricaoFonte {
+  if (process.env.ZONEAMENTO_GEOJSON) {
+    return {
+      ativo: true,
+      chave: "geojson",
+      rotulo: "camada local (GeoJSON)",
+      camada: null,
+      arquivo: process.env.ZONEAMENTO_GEOJSON,
+    };
+  }
+  if (geoSampaAtivo()) {
+    return {
+      ativo: true,
+      chave: "geosampa",
+      rotulo: "GeoSampa (camada oficial, ao vivo)",
+      camada: camadaConfigurada(),
+      arquivo: null,
+    };
+  }
+  return {
+    ativo: false,
+    chave: "nenhuma",
+    rotulo: "nenhuma",
+    camada: null,
+    arquivo: null,
+  };
+}
+
+/** Mantido para quem só precisa do sim/não. */
+export function zoneamentoConfigurado(): boolean {
+  return fonteZoneamento().ativo;
+}
+
+// ---------------------------------------------------------------------------
+// Sigla -> enum
+// ---------------------------------------------------------------------------
+
+const MAPA_ZONAS: Record<string, ZonaChave> = {
+  ZEU: "ZEU",
+  ZEUA: "ZEUa",
+  ZEUP: "ZEUP",
+  ZEUPA: "ZEUPa",
+  ZEM: "ZEM",
+  ZEMP: "ZEMP",
+  ZC: "ZC",
+  ZM: "ZM",
+  ZR: "ZR",
+};
+
+function chaveDe(texto: string): ZonaChave | null {
+  const limpo = texto
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-zA-Z]/g, "")
     .toUpperCase();
 
-  const mapa: Record<string, ZonaChave> = {
-    ZEU: "ZEU",
-    ZEUA: "ZEUa",
-    ZEUP: "ZEUP",
-    ZEUPA: "ZEUPa",
-    ZEM: "ZEM",
-    ZEMP: "ZEMP",
-    ZC: "ZC",
-    ZM: "ZM",
-    ZR: "ZR",
-  };
-  const direto = mapa[limpo];
+  if (!limpo) return null;
+  const direto = MAPA_ZONAS[limpo];
   if (direto) return direto;
   if (limpo.startsWith("ZEIS")) return "ZEIS";
   if (limpo.startsWith("ZC")) return "ZC";
   if (limpo.startsWith("ZM")) return "ZM";
   if (limpo.startsWith("ZR")) return "ZR";
-  return (ZONAS as readonly string[]).includes(limpo) ? (limpo as ZonaChave) : "OUTRA";
+  return (ZONAS as readonly string[]).includes(limpo) ? (limpo as ZonaChave) : null;
 }
+
+/**
+ * "ZEU (a)", "zeu-p", "ZEIS-2" -> chave do enum.
+ *
+ * A segunda passada existe porque nem toda camada guarda só a sigla: há
+ * atributo que traz "ZEU - Zona Eixo de Estruturação da Transformação Urbana"
+ * inteiro, e aí só a primeira palavra interessa.
+ */
+export function normalizarZona(bruto: string): ZonaChave {
+  const primeiraPalavra = bruto.trim().split(/[\s,;/|]+/)[0] ?? "";
+  return chaveDe(bruto) ?? chaveDe(primeiraPalavra) ?? "OUTRA";
+}
+
+// ---------------------------------------------------------------------------
+// GeoJSON local
+// ---------------------------------------------------------------------------
 
 async function lerFonte(fonte: string): Promise<string> {
   if (/^https?:\/\//i.test(fonte)) {
@@ -84,35 +155,6 @@ async function lerFonte(fonte: string): Promise<string> {
     return resposta.text();
   }
   return readFile(path.resolve(process.cwd(), fonte), "utf8");
-}
-
-function extrairAneis(geometry: NonNullable<GeoJSONFeature["geometry"]>): Anel[][] {
-  if (geometry.type === "Polygon") {
-    return [geometry.coordinates as Anel[]];
-  }
-  if (geometry.type === "MultiPolygon") {
-    return geometry.coordinates as Anel[][];
-  }
-  return [];
-}
-
-function calcularBbox(poligonos: Anel[][]): [number, number, number, number] {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-
-  for (const poligono of poligonos) {
-    for (const anel of poligono) {
-      for (const [x, y] of anel) {
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
-      }
-    }
-  }
-  return [minX, minY, maxX, maxY];
 }
 
 async function carregar(): Promise<FeatureZona[]> {
@@ -129,20 +171,19 @@ async function carregar(): Promise<FeatureZona[]> {
     const props = feature.properties ?? {};
 
     const campo =
-      campoConfigurado ??
-      CAMPOS_CANDIDATOS.find((c) => typeof props[c] === "string" && props[c]);
+      campoConfigurado ?? CAMPOS_CANDIDATOS.find((c) => typeof props[c] === "string" && props[c]);
     if (!campo) continue;
 
     const bruto = String(props[campo] ?? "").trim();
     if (!bruto) continue;
 
-    const poligonos = extrairAneis(feature.geometry);
+    const poligonos = extrairPoligonos(feature.geometry);
     if (!poligonos.length) continue;
 
     saida.push({
       zona: normalizarZona(bruto),
       bruto,
-      aneis: poligonos,
+      poligonos,
       bbox: calcularBbox(poligonos),
     });
   }
@@ -170,55 +211,50 @@ async function camada(): Promise<FeatureZona[]> {
   return carregando;
 }
 
-/** Ray casting padrão: conta cruzamentos à direita do ponto. */
-function pontoNoAnel(x: number, y: number, anel: Anel): boolean {
-  let dentro = false;
-  for (let i = 0, j = anel.length - 1; i < anel.length; j = i++) {
-    const atual = anel[i];
-    const anterior = anel[j];
-    if (!atual || !anterior) continue;
+// ---------------------------------------------------------------------------
+// Resolução
+// ---------------------------------------------------------------------------
 
-    const [xi, yi] = atual;
-    const [xj, yj] = anterior;
-    const cruza = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
-    if (cruza) dentro = !dentro;
-  }
-  return dentro;
-}
+export type ResultadoZona =
+  | { estado: "encontrada"; zona: ZonaChave; bruto: string; fonte: FonteZona }
+  /** Consultado com sucesso e o ponto não caiu em nenhum polígono da camada. */
+  | { estado: "fora"; fonte: FonteZona }
+  /** Não deu para consultar. Nunca deve ser lido como "não é ZEU". */
+  | { estado: "indisponivel"; motivo: string };
 
-/** Primeiro anel é o contorno; os demais são buracos. */
-function pontoNoPoligono(x: number, y: number, poligono: Anel[]): boolean {
-  const [contorno, ...buracos] = poligono;
-  if (!contorno || !pontoNoAnel(x, y, contorno)) return false;
-  return !buracos.some((buraco) => pontoNoAnel(x, y, buraco));
-}
+export async function resolverZona(latitude: number, longitude: number): Promise<ResultadoZona> {
+  if (process.env.ZONEAMENTO_GEOJSON) {
+    const features = await camada();
+    if (!features.length) {
+      return {
+        estado: "indisponivel",
+        motivo: `a camada de ZONEAMENTO_GEOJSON (${process.env.ZONEAMENTO_GEOJSON}) não trouxe nenhum polígono utilizável`,
+      };
+    }
 
-export interface ZonaResolvida {
-  zona: ZonaChave;
-  bruto: string;
-}
-
-export async function resolverZona(
-  latitude: number,
-  longitude: number,
-): Promise<ZonaResolvida | null> {
-  const features = await camada();
-  if (!features.length) return null;
-
-  for (const feature of features) {
-    const [minX, minY, maxX, maxY] = feature.bbox;
-    if (longitude < minX || longitude > maxX || latitude < minY || latitude > maxY) continue;
-
-    for (const poligono of feature.aneis) {
-      if (pontoNoPoligono(longitude, latitude, poligono)) {
-        return { zona: feature.zona, bruto: feature.bruto };
+    for (const feature of features) {
+      if (!dentroDaBbox(longitude, latitude, feature.bbox)) continue;
+      if (pontoEmAlgum(longitude, latitude, feature.poligonos)) {
+        return { estado: "encontrada", zona: feature.zona, bruto: feature.bruto, fonte: "GEOJSON" };
       }
     }
+    return { estado: "fora", fonte: "GEOJSON" };
   }
-  return null;
+
+  const resposta = await zonaNoGeoSampa(latitude, longitude);
+  if (resposta.estado === "encontrada") {
+    return {
+      estado: "encontrada",
+      zona: normalizarZona(resposta.bruto),
+      bruto: resposta.bruto,
+      fonte: "GEOSAMPA",
+    };
+  }
+  if (resposta.estado === "fora") return { estado: "fora", fonte: "GEOSAMPA" };
+  return resposta;
 }
 
-/** Link direto do GeoSampa, para conferência manual quando não há camada. */
+/** Link direto do GeoSampa, para conferência manual. */
 export function linkGeoSampa(latitude?: number | null, longitude?: number | null): string {
   const base = "https://geosampa.prefeitura.sp.gov.br/PaginasPublicas/_SBC.aspx";
   if (latitude == null || longitude == null) return base;

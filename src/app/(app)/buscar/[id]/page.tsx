@@ -28,10 +28,15 @@ export const metadata: Metadata = { title: "Resultados da busca" };
 export const dynamic = "force-dynamic";
 
 const ORIGEM_ZONA: Record<string, { rotulo: string; classe: string; ajuda: string }> = {
+  GEOSAMPA: {
+    rotulo: "confirmada no GeoSampa",
+    classe: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+    ajuda: "Coordenada cruzada com a camada oficial de zoneamento da Prefeitura, ao vivo.",
+  },
   GEOJSON: {
     rotulo: "confirmada",
     classe: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-    ajuda: "Coordenada cruzada com a camada oficial de zoneamento.",
+    ajuda: "Coordenada cruzada com a camada de zoneamento carregada no servidor.",
   },
   TEXTO: {
     rotulo: "citada no anúncio",
@@ -102,10 +107,16 @@ export default async function ResultadosPage({ params }: { params: Promise<{ id:
         <Metrica rotulo="Com área identificada" valor={numero(comArea.length)} detalhe={`${m2(areaTotal)} somados`} />
         <Metrica
           rotulo="Zona confirmada"
-          valor={numero(ativos.filter((r) => r.origemZona === "GEOJSON").length)}
+          valor={numero(
+            ativos.filter((r) => r.origemZona === "GEOSAMPA" || r.origemZona === "GEOJSON").length,
+          )}
           detalhe="cruzadas com o zoneamento"
         />
-        <Metrica rotulo="Descartados" valor={numero(descartados.length)} detalhe="ocultos da lista" />
+        <Metrica
+          rotulo="Reprovados pela zona"
+          valor={numero(busca.descartadosZona)}
+          detalhe="zona confirmada fora do filtro"
+        />
       </div>
 
       <div className="mb-6">
@@ -163,7 +174,11 @@ export default async function ResultadosPage({ params }: { params: Promise<{ id:
       {ativos.length === 0 ? (
         <Vazio
           titulo="Nenhum anúncio passou no filtro"
-          descricao="Tente uma área mínima menor, mais regiões ou mais consultas por busca. Anúncios sem área declarada são descartados quando essa opção está marcada."
+          descricao={
+            busca.descartadosZona > 0
+              ? `${busca.descartadosZona} anúncio(s) foram encontrados e reprovados pelo zoneamento: a coordenada caiu fora das zonas escolhidas. Isso é um resultado, não uma falha — na maior parte da cidade não há eixo. Amplie as regiões ou inclua mais zonas no filtro.`
+              : "Tente uma área mínima menor, mais regiões ou mais consultas por busca. Anúncios sem área declarada são descartados quando essa opção está marcada."
+          }
           acao={<BotaoLink href="/buscar">Ajustar filtros</BotaoLink>}
         />
       ) : (

@@ -199,14 +199,56 @@ zonas ficam "a verificar" — o app avisa na tela quando isso acontece. As
 consultas são serializadas com 1,1 s de intervalo (política do serviço) e ficam
 em cache no banco, inclusive as que não acharam nada.
 
-### Confirmando a ZEU automaticamente
+### Confirmando a ZEU automaticamente (GeoSampa)
 
-Esta é a parte que transforma "bairro de eixo" em "está na ZEU mesmo".
+Esta é a parte que transforma "bairro de eixo" em "está na ZEU mesmo". **Não
+precisa configurar nada**: o app consulta o WFS público da Prefeitura a cada
+coordenada e confirma a zona na hora.
+
+Como funciona, em uma linha por etapa:
+
+1. O endereço do anúncio é geocodificado (Nominatim) e vira latitude/longitude.
+2. A coordenada é reprojetada para **EPSG:31983** (SIRGAS 2000 / UTM 23S), que é
+   o sistema nativo das camadas do GeoSampa.
+3. O app pede ao WFS as feições numa caixa de poucos metros em volta do ponto,
+   na camada `geoportal:perimetro_zona_lei_18177_24` — "Perímetro de Zonas,
+   Lei 18.177/24", ou seja, a LPUOS vigente.
+4. O *point-in-polygon* é feito localmente sobre o que voltou, e a zona aparece
+   na tela como **confirmada no GeoSampa**.
+
+Duas decisões que valem a explicação, porque não são óbvias:
+
+- **Por que UTM e não latitude/longitude.** Em EPSG:4326, a ordem dos eixos
+  depende de como o código do CRS é escrito na requisição, e quando o serviço
+  entende ao contrário ele não reclama: devolve zero feição. Zero feição é
+  indistinguível de "aqui não tem zona nenhuma" — o app afirmaria, com toda a
+  confiança, que a cidade inteira não é ZEU. Em UTM não existe essa ambiguidade.
+- **Por que uma caixa e não um ponto.** A consulta por caixa é aplicada pelo
+  GeoServer na geometria padrão da camada, sem precisar adivinhar o nome da
+  coluna geométrica (`the_geom`, `geom`, `shape`… varia). E a coordenada do
+  Nominatim tem incerteza de dezenas de metros, então alguns metros de folga são
+  honestos.
+
+Falha nunca vira "não é ZEU": se o serviço não responder, o resultado fica
+**a verificar**, o motivo aparece no aviso da busca e o link do GeoSampa
+continua do lado de cada anúncio para conferência manual.
+
+Variáveis, para o dia em que a Prefeitura mudar algo de lugar:
+
+```env
+GEOSAMPA_WFS="off"                                  # desliga a consulta
+GEOSAMPA_WFS_CAMADA="geoportal:zoneamento_2016_map1" # outra camada
+GEOSAMPA_WFS_URL="https://.../geoserver/geoportal/wfs"
+```
+
+#### Alternativa offline: GeoJSON local
+
+Se preferir não depender do serviço (ou quiser velocidade máxima), aponte um
+arquivo — ele **tem precedência** sobre o GeoSampa:
 
 1. No [GeoSampa](https://geosampa.prefeitura.sp.gov.br), baixe a camada de
    **Zoneamento (LPUOS)**.
-2. Converta para GeoJSON em EPSG:4326, **filtrando só as zonas de eixo** — o
-   arquivo da cidade inteira é grande demais para carregar a cada requisição:
+2. Converta para GeoJSON em EPSG:4326, filtrando só as zonas que interessam:
    ```bash
    ogr2ogr -f GeoJSON data/zoneamento.geojson zoneamento.shp \
      -t_srs EPSG:4326 -where "zl_zona LIKE 'ZEU%' OR zl_zona LIKE 'ZEM%'"
@@ -216,14 +258,12 @@ Esta é a parte que transforma "bairro de eixo" em "está na ZEU mesmo".
    ZONEAMENTO_GEOJSON="data/zoneamento.geojson"
    ```
 
-Com a camada carregada, a coordenada de cada anúncio passa por *point-in-polygon*
-e a zona vira **confirmada** — e o filtro "só aceitar zona confirmada" fica
-disponível na busca. Sem ela, o app é honesto: marca "a verificar" e põe o link
-do GeoSampa do lado.
+O preço é que o arquivo congela na data em que foi gerado — a tela de busca
+avisa isso.
 
-Para volume grande de polígonos, o certo é PostGIS com `ST_Contains` em vez do
-GeoJSON em memória. O ponto de troca é a função `resolverZona` em
-`src/lib/geo/zoneamento.ts` — só ela sabe como a zona é resolvida.
+Para volume grande de polígonos, o certo é PostGIS com `ST_Contains`. O ponto de
+troca é a função `resolverZona` em `src/lib/geo/zoneamento.ts` — só ela sabe
+como a zona é resolvida.
 
 ---
 
