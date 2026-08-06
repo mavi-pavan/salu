@@ -113,11 +113,17 @@ export async function executarBusca(
   // Uma busca pode dar errado em mais de um lugar ao mesmo tempo, e guardar só
   // o primeiro problema esconde os outros: foi assim que uma falha de
   // zoneamento ficou invisível atrás de um aviso sobre o filtro de portais.
-  const avisos: string[] = [];
+  //
+  // Mas nem tudo aqui é da mesma natureza, e misturar as duas coisas fazia toda
+  // busca abrir com uma caixa de alerta — o que treina qualquer pessoa a não
+  // ler nenhuma. `problemas` é o que impediu a busca de entregar o que foi
+  // pedido; `notas` é o relato de como ela rodou.
+  const problemas: string[] = [];
+  const notas: string[] = [];
 
   const cortadas = regioesDescartadas(params);
   if (cortadas.length) {
-    avisos.push(
+    problemas.push(
       `Você marcou ${params.regioes.length} regiões e o limite por busca é ${MAX_CONSULTAS}. Ficaram de fora: ${cortadas.join(", ")}. Rode uma segunda busca com elas.`,
     );
   }
@@ -158,7 +164,7 @@ export async function executarBusca(
       }
 
       // Cota estourada ou chave inválida: para de insistir e conta o que já veio.
-      avisos.push(motivo);
+      problemas.push(`A busca parou antes de rodar todas as consultas. ${motivo}`);
       break;
     }
   }
@@ -167,7 +173,7 @@ export async function executarBusca(
     // O motivo cru vai junto de propósito: sem ele, "o provedor recusou" não
     // dá para consertar — o corpo da resposta é que diz qual parâmetro caiu.
     const planoGratuito = /not allowed for free accounts/i.test(motivoDaRecusa);
-    avisos.push(
+    notas.push(
       planoGratuito
         ? `O plano gratuito do Serper não aceita operadores de busca, então o filtro de portais foi desligado nesta e nas consultas seguintes. Os resultados podem incluir páginas que não são anúncio — elas vêm marcadas como "fora dos portais" na lista. Para filtrar por portal de verdade: use o Tavily (que restringe domínios sem operador) ou um plano pago do Serper. Resposta do provedor: ${motivoDaRecusa}`
         : `O provedor recusou a consulta com filtro de portais, então a busca rodou sem ele e os resultados podem incluir páginas que não são anúncio. Resposta do provedor: ${motivoDaRecusa}`,
@@ -370,13 +376,13 @@ export async function executarBusca(
   // "a verificar" e ninguém entende por quê. Se nenhuma tentativa deu certo,
   // isso aparece junto do resultado.
   if (geocodificados > 0 && geocodificadosComSucesso === 0) {
-    avisos.push(
+    problemas.push(
       "Nenhum endereço pôde ser geocodificado — as zonas não foram confirmadas. Verifique NOMINATIM_USER_AGENT (o Nominatim recusa requisições sem contato identificado).",
     );
   } else if (geocodificadosComSucesso < geocodificados) {
     // Explica a métrica "zona confirmada" baixa sem obrigar ninguém a deduzir:
     // anúncio cujo endereço não é localizável nunca chega ao zoneamento.
-    avisos.push(
+    notas.push(
       `Dos ${geocodificados} anúncios com endereço no texto, ${geocodificadosComSucesso} foram localizados no mapa — só esses chegam a ser cruzados com o zoneamento. Os demais ou não trazem endereço específico o bastante, ou o serviço de geocodificação não respondeu.`,
     );
   }
@@ -384,12 +390,18 @@ export async function executarBusca(
   // O mesmo vale para o zoneamento: se a camada não respondeu, ninguém pode
   // concluir que os lotes não são ZEU — eles ficaram sem conferência.
   if (motivoZoneamento) {
-    avisos.push(
-      `A camada de zoneamento não respondeu em ${falhasZoneamento} consulta(s); essas zonas ficaram "a verificar". Motivo: ${motivoZoneamento}`,
-    );
+    const zonasConfirmadas = aceitos.filter(
+      (a) => a.origemZona === "GEOSAMPA" || a.origemZona === "GEOJSON",
+    ).length;
+    const texto = `A camada de zoneamento não respondeu em ${falhasZoneamento} consulta(s); essas zonas ficaram "a verificar". Motivo: ${motivoZoneamento}`;
+    // Falhar em algumas consultas é contratempo; falhar em todas significa que
+    // o filtro de zona não funcionou nesta busca, e isso muda o que a lista
+    // quer dizer.
+    if (zonasConfirmadas === 0 && descartadosZona === 0) problemas.push(texto);
+    else notas.push(texto);
   }
 
-  const erro = avisos.length ? avisos.join(" ") : null;
+  const erro = problemas.length ? problemas.join(" ") : null;
 
   const busca = await prisma.busca.create({
     data: {

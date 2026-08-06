@@ -418,7 +418,12 @@ model Busca {
   /// "descartar sem área" ligada. Junto dos outros dois, fecha a conta entre
   /// páginas lidas e candidatos — sem isso, "só achou 2" não tem explicação.
   descartadosArea     Int  @default(0)
+  /// Falha que impediu a busca de entregar o que foi pedido. Aparece no topo.
   erro         String?
+  /// Relato de como a busca rodou — filtro de portais desligado, parte dos
+  /// endereços sem coordenada. Vai para o rodapé: alerta que aparece em toda
+  /// busca é alerta que ninguém lê.
+  notas        String[]
   createdAt    DateTime @default(now())
 
   criadoPor  User             @relation("BuscaAutor", fields: [criadoPorId], references: [id], onDelete: Cascade)

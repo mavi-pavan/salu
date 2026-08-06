@@ -107,7 +107,7 @@ export default async function ResultadosPage({ params }: { params: Promise<{ id:
 
       {busca.erro ? (
         <div className="mb-6">
-          <Aviso tom="atencao" titulo="Aviso sobre esta busca">
+          <Aviso tom="atencao" titulo="Esta busca não rodou por inteiro">
             {busca.erro}
           </Aviso>
         </div>
@@ -234,6 +234,21 @@ export default async function ResultadosPage({ params }: { params: Promise<{ id:
       ) : (
         <ListaResultados resultados={ativos} editavel={editavel} premissas={premissas} />
       )}
+
+      {busca.notas.length ? (
+        <div className="mt-8 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Como esta busca rodou
+          </p>
+          <ul className="flex flex-col gap-1.5">
+            {busca.notas.map((nota, i) => (
+              <li key={i} className="text-xs leading-relaxed text-slate-500">
+                {nota}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {descartados.length ? (
         <details className="mt-6">
