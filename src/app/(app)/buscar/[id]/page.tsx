@@ -103,7 +103,15 @@ export default async function ResultadosPage({ params }: { params: Promise<{ id:
       ) : null}
 
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Metrica rotulo="Candidatos" valor={numero(ativos.length)} detalhe={`${numero(busca.totalBruto)} anúncios lidos`} />
+        <Metrica
+          rotulo="Candidatos"
+          valor={numero(ativos.length)}
+          detalhe={
+            busca.descartadosListagem > 0
+              ? `${numero(busca.totalBruto)} páginas lidas · ${numero(busca.descartadosListagem)} eram lista do portal`
+              : `${numero(busca.totalBruto)} anúncios lidos`
+          }
+        />
         <Metrica rotulo="Com área identificada" valor={numero(comArea.length)} detalhe={`${m2(areaTotal)} somados`} />
         <Metrica
           rotulo="Zona confirmada"

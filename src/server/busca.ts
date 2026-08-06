@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { buscarNaWeb, ehDemo, provedorConfigurado, type ItemWeb } from "@/lib/busca/provedores";
 import { dominio, extrairTudo, normalizarZonaTexto } from "@/lib/busca/extrair";
+import { classificarPagina } from "@/lib/busca/paginas";
 import { normalizar } from "@/lib/busca/regioes";
 import {
   MAX_CONSULTAS,
@@ -29,7 +30,18 @@ export interface ParametrosBusca {
   maxConsultas: number;
 }
 
-const RESULTADOS_POR_CONSULTA = 20;
+/**
+ * Resultados pedidos por consulta.
+ *
+ * Vale subir quando faltar anúncio individual: as páginas de listagem do
+ * portal são as que o Google põe no topo, e os anúncios de um lote só
+ * aparecem mais fundo. Configurável porque provedor cobra por consulta e o
+ * custo de pedir mais fundo depende do plano de cada um.
+ */
+const RESULTADOS_POR_CONSULTA = Math.min(
+  Math.max(Number(process.env.BUSCA_RESULTADOS_POR_CONSULTA ?? 20) || 20, 10),
+  100,
+);
 const LIMITE_GEOCODE = Number(process.env.BUSCA_MAX_GEOCODE ?? 25);
 const PALAVRAS_RELEVANTES = ["terreno", "lote", "gleba", "área para", "area para"];
 
@@ -158,8 +170,18 @@ export async function executarBusca(
   }
 
   const vistos = new Set<string>();
+  let descartadosListagem = 0;
+
   const unicos = brutos.filter((item) => {
     if (!pareceAnuncioDeTerreno(item)) return false;
+
+    // Página de busca do portal ("1.234 terrenos à venda") não é candidato:
+    // não tem área, preço nem endereço, e o que ela lista muda toda hora.
+    if (classificarPagina(item.titulo, item.url) === "listagem") {
+      descartadosListagem += 1;
+      return false;
+    }
+
     const chave = chaveDeUrl(item.url);
     if (vistos.has(chave)) return false;
     vistos.add(chave);
@@ -323,6 +345,7 @@ export async function executarBusca(
       consultas: consultasEfetivas,
       totalBruto: brutos.length,
       totalAceito: aceitos.length,
+      descartadosListagem,
       descartadosZona,
       // Ordenado do mais frequente para o menos: "ZM (3), ZC (2)".
       zonasReprovadas: [...zonasReprovadas.entries()]

@@ -411,6 +411,9 @@ model Busca {
   /// camada. Sem isso não dá para distinguir "reprovou certo, era tudo ZM" de
   /// "leu a coluna errada e virou tudo OUTRA".
   zonasReprovadas String[]
+  /// Páginas de busca do portal ("1.234 terrenos à venda") descartadas por não
+  /// serem anúncio de um lote.
+  descartadosListagem Int  @default(0)
   erro         String?
   createdAt    DateTime @default(now())
 
