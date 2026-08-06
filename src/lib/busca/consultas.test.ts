@@ -7,6 +7,7 @@ import {
   montarConsultas,
   regioesDaBusca,
   regioesDescartadas,
+  semFiltroDeSites,
 } from "./consultas";
 
 const base = { regioes: [] as string[], termosExtras: null, maxConsultas: 6 };
@@ -85,5 +86,28 @@ describe("texto da consulta", () => {
   it("não deixa espaço duplicado quando não há termos extras", () => {
     const [consulta] = montarConsultas({ ...base, regioes: ["Saúde"] });
     expect(consulta).not.toMatch(/\s{2}/);
+  });
+});
+
+describe("plano B sem filtro de portais", () => {
+  it("remove o grupo site: do fim da consulta", () => {
+    const [consulta] = montarConsultas({ ...base, regioes: ["Moema"] });
+    const simples = semFiltroDeSites(consulta!);
+
+    expect(consulta).toContain("site:");
+    expect(simples).not.toContain("site:");
+    expect(simples).toContain("Moema");
+    expect(simples).toContain("terreno à venda");
+  });
+
+  it("não mexe em consulta que já não tem filtro", () => {
+    const simples = "terreno à venda Moema São Paulo m²";
+    expect(semFiltroDeSites(simples)).toBe(simples);
+  });
+
+  it("não deixa espaço sobrando na ponta", () => {
+    const [consulta] = montarConsultas({ ...base, regioes: ["Lapa"] });
+    const simples = semFiltroDeSites(consulta!);
+    expect(simples).toBe(simples.trim());
   });
 });

@@ -9,6 +9,7 @@ import {
   montarConsultas,
   portais,
   regioesDescartadas,
+  semFiltroDeSites,
 } from "@/lib/busca/consultas";
 import { consultaDeEndereco, geocodificar } from "@/lib/geo/geocodificar";
 import { resolverZona, zoneamentoConfigurado } from "@/lib/geo/zoneamento";
@@ -72,14 +73,35 @@ export async function executarBusca(
     erro = `Você marcou ${params.regioes.length} regiões e o limite por busca é ${MAX_CONSULTAS}. Ficaram de fora: ${cortadas.join(", ")}. Rode uma segunda busca com elas.`;
   }
 
+  let caiuParaConsultaSimples = false;
+
   for (const consulta of consultas) {
     try {
       brutos.push(...(await buscarNaWeb(consulta, RESULTADOS_POR_CONSULTA)));
     } catch (falha) {
+      // O grupo `(site:... OR site:...)` é a parte mais exótica da consulta e a
+      // primeira a ser recusada por um provedor. Antes de desistir, tenta sem
+      // ele: busca mais aberta ainda é melhor que resultado nenhum.
+      const alternativa = semFiltroDeSites(consulta);
+      if (alternativa !== consulta) {
+        try {
+          brutos.push(...(await buscarNaWeb(alternativa, RESULTADOS_POR_CONSULTA)));
+          caiuParaConsultaSimples = true;
+          continue;
+        } catch {
+          // segue para o erro original, que é o mais informativo
+        }
+      }
+
       // Cota estourada ou chave inválida: para de insistir e conta o que já veio.
       erro = falha instanceof Error ? falha.message : "Falha na busca";
       break;
     }
+  }
+
+  if (!erro && caiuParaConsultaSimples) {
+    erro =
+      "O provedor recusou a consulta com filtro de portais, então a busca rodou sem ele. Os resultados podem incluir páginas que não são anúncio.";
   }
 
   const vistos = new Set<string>();

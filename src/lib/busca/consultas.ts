@@ -79,6 +79,18 @@ export function regioesDescartadas(entrada: EntradaConsultas): string[] {
   return entrada.regioes.slice(MAX_CONSULTAS);
 }
 
+/**
+ * Remove o grupo `(site:a OR site:b ...)` do fim da consulta.
+ *
+ * Serve de plano B: o grupo de operadores é a parte mais exótica da consulta e
+ * a primeira candidata a ser recusada por um provedor. Sem ele a busca fica
+ * mais aberta, mas continua trazendo anúncio — melhor que voltar de mãos
+ * vazias.
+ */
+export function semFiltroDeSites(consulta: string): string {
+  return consulta.replace(/\s*\(\s*site:[^)]*\)\s*$/i, "").trim();
+}
+
 export function montarConsultas(entrada: EntradaConsultas): string[] {
   const lista = portais();
   const filtroSite = lista.length ? `(${lista.map((p) => `site:${p}`).join(" OR ")})` : "";

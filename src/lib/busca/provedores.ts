@@ -41,6 +41,29 @@ export function ehDemo(): boolean {
   return provedorConfigurado() === "demo";
 }
 
+/**
+ * Chave colada de painel costuma vir com espaço ou quebra de linha grudada, e
+ * header inválido vira erro genérico difícil de rastrear.
+ */
+function chave(nome: string): string {
+  return (process.env[nome] ?? "").trim();
+}
+
+/**
+ * "Serper respondeu 400" não diz nada a quem precisa consertar. O corpo da
+ * resposta quase sempre nomeia o parâmetro recusado — então ele vai junto.
+ */
+async function erroDaResposta(provedor: string, resposta: Response): Promise<Error> {
+  let detalhe = "";
+  try {
+    const texto = (await resposta.text()).trim();
+    if (texto) detalhe = ` — ${texto.slice(0, 300)}`;
+  } catch {
+    // corpo ilegível: o status já basta
+  }
+  return new Error(`${provedor} respondeu ${resposta.status}${detalhe}`);
+}
+
 export async function buscarNaWeb(consulta: string, limite = 20): Promise<ItemWeb[]> {
   switch (provedorConfigurado()) {
     case "serper":
@@ -60,14 +83,15 @@ async function viaSerper(consulta: string, limite: number): Promise<ItemWeb[]> {
   const resposta = await fetch("https://google.serper.dev/search", {
     method: "POST",
     headers: {
-      "X-API-KEY": process.env.SERPER_API_KEY ?? "",
+      "X-API-KEY": chave("SERPER_API_KEY"),
       "Content-Type": "application/json",
     },
+    // `num` só aceita alguns degraus (10, 20, 30...); 20 é o que usamos.
     body: JSON.stringify({ q: consulta, gl: "br", hl: "pt-br", num: Math.min(limite, 100) }),
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
 
-  if (!resposta.ok) throw new Error(`Serper respondeu ${resposta.status}`);
+  if (!resposta.ok) throw await erroDaResposta("Serper", resposta);
   const dados = (await resposta.json()) as {
     organic?: Array<{ title?: string; link?: string; snippet?: string }>;
   };
@@ -87,12 +111,12 @@ async function viaBrave(consulta: string, limite: number): Promise<ItemWeb[]> {
   const resposta = await fetch(url, {
     headers: {
       Accept: "application/json",
-      "X-Subscription-Token": process.env.BRAVE_API_KEY ?? "",
+      "X-Subscription-Token": chave("BRAVE_API_KEY"),
     },
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
 
-  if (!resposta.ok) throw new Error(`Brave respondeu ${resposta.status}`);
+  if (!resposta.ok) throw await erroDaResposta("Brave", resposta);
   const dados = (await resposta.json()) as {
     web?: { results?: Array<{ title?: string; url?: string; description?: string }> };
   };
@@ -111,7 +135,7 @@ async function viaTavily(consulta: string, limite: number): Promise<ItemWeb[]> {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.TAVILY_API_KEY ?? ""}`,
+      Authorization: `Bearer ${chave("TAVILY_API_KEY")}`,
     },
     body: JSON.stringify({
       query: consulta,
@@ -122,7 +146,7 @@ async function viaTavily(consulta: string, limite: number): Promise<ItemWeb[]> {
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
 
-  if (!resposta.ok) throw new Error(`Tavily respondeu ${resposta.status}`);
+  if (!resposta.ok) throw await erroDaResposta("Tavily", resposta);
   const dados = (await resposta.json()) as {
     results?: Array<{ title?: string; url?: string; content?: string }>;
   };
