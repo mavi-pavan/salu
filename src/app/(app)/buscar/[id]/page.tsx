@@ -15,6 +15,7 @@ import {
 } from "@/server/busca";
 import { obterConfiguracao } from "@/server/queries";
 import { MapaResultados } from "@/components/mapa/mapa-resultados";
+import { zoneamentoWms } from "@/lib/geo/geosampa";
 import type { Premissas } from "@/lib/viabilidade";
 import { alternarDescarte, excluirBusca } from "@/server/actions-busca";
 import {
@@ -225,13 +226,14 @@ export default async function ResultadosPage({ params }: { params: Promise<{ id:
           <Cartao>
             <CartaoCabecalho
               titulo="No mapa"
-              descricao="Clique nos círculos para escolher, ou use “Selecionar por área” e arraste sobre um trecho do eixo. Os escolhidos aparecem embaixo, com o botão para mandar ao funil."
+              descricao="A mancha colorida por baixo é o zoneamento vigente da Prefeitura — arraste o mapa e ela acompanha. Clique nos círculos para escolher, ou use “Selecionar por área” e arraste sobre um trecho do eixo."
             />
             <CartaoCorpo>
               <MapaResultados
                 pontos={pontos}
                 semCoordenada={semCoordenada}
                 editavel={editavel}
+                wms={zoneamentoWms()}
               />
             </CartaoCorpo>
           </Cartao>

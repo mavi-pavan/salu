@@ -287,6 +287,23 @@ GEOSAMPA_WFS_CAMADA="geoportal:zoneamento_2016_map1" # outra camada
 GEOSAMPA_WFS_URL="https://.../geoserver/geoportal/wfs"
 ```
 
+#### O zoneamento desenhado no mapa
+
+O mesmo serviço da Prefeitura desenha a camada por baixo dos anúncios, no mapa
+dos resultados e no mapa dos terrenos. É o que responde "esse trecho é ZEU?"
+sem clicar em nada: arrasta o mapa e a mancha da zona acompanha.
+
+Quem desenha é o servidor deles (WMS), que manda só os azulejos da área
+visível — o navegador não baixa polígono nenhum, e não há arquivo para manter
+atualizado. O botão **Zoneamento** liga e desliga a camada.
+
+Se o serviço não responder, a camada some sozinha em vez de deixar o mapa
+quadriculado de imagens quebradas. Os anúncios continuam lá.
+
+Para desenhar só as zonas de eixo em vez do zoneamento inteiro, `GEOSAMPA_WMS_FILTRO`
+aceita um filtro CQL (ex.: `zl_zona LIKE 'ZEU%'`). O nome da coluna varia por
+camada — a tela `/buscar?diagnostico=1` mostra qual sigla a camada devolve.
+
 #### Alternativa offline: GeoJSON local
 
 Se preferir não depender do serviço (ou quiser velocidade máxima), aponte um

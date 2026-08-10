@@ -66,6 +66,34 @@ export function geoSampaAtivo(): boolean {
   return valor !== "off" && valor !== "0" && valor !== "false";
 }
 
+/**
+ * A mesma camada, servida como imagem para desenhar por baixo dos lotes.
+ *
+ * O GeoServer que responde o WFS responde WMS no endereço irmão, e é o WMS que
+ * interessa no mapa: em vez de baixar os polígonos da cidade inteira para o
+ * navegador, a Prefeitura devolve azulejos prontos conforme se arrasta o mapa.
+ * Nada trafega além do que está na tela.
+ */
+export interface CamadaWms {
+  url: string;
+  camada: string;
+  /** CQL opcional, para mostrar só as zonas de eixo em vez do zoneamento todo. */
+  filtro: string | null;
+  ativo: boolean;
+}
+
+export function zoneamentoWms(): CamadaWms {
+  const irmao = endpointConfigurado().replace(/\/wfs(\?.*)?$/i, "/wms");
+  const url = (process.env.GEOSAMPA_WMS_URL ?? "").trim() || irmao;
+  const camada = (process.env.GEOSAMPA_WMS_CAMADA ?? "").trim() || camadaConfigurada();
+  return {
+    url,
+    camada,
+    filtro: (process.env.GEOSAMPA_WMS_FILTRO ?? "").trim() || null,
+    ativo: geoSampaAtivo(),
+  };
+}
+
 export function urlConsulta(x: number, y: number, raio = RAIO_M): string {
   const url = new URL(endpointConfigurado());
   url.searchParams.set("service", "WFS");

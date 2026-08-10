@@ -9,6 +9,8 @@ import "leaflet/dist/leaflet.css";
 
 import { brl, brlCompacto, m2 } from "@/lib/format";
 import { alternarDescarte } from "@/server/actions-busca";
+import { BotaoZoneamento, CamadaZoneamento } from "./camada-zoneamento";
+import type { CamadaWms } from "@/lib/geo/geosampa";
 import type { PontoResultado } from "@/server/busca";
 
 /** Centro aproximado da cidade, para o caso de não haver ponto nenhum. */
@@ -139,13 +141,17 @@ export default function MapaResultadosLeaflet({
   pontos,
   semCoordenada,
   editavel,
+  wms,
 }: {
   pontos: PontoResultado[];
   semCoordenada: number;
   editavel: boolean;
+  wms: CamadaWms;
 }) {
   const [selecionados, setSelecionados] = useState<string[]>([]);
   const [modoArea, setModoArea] = useState(false);
+  // Ligado de saída: a pergunta que traz alguém a esta tela é "isto é ZEU?".
+  const [zoneamento, setZoneamento] = useState(true);
 
   // Maior primeiro: o Leaflet desenha na ordem, então os círculos pequenos
   // ficam por cima e continuam clicáveis dentro dos grandes.
@@ -195,6 +201,11 @@ export default function MapaResultadosLeaflet({
           {" · clique para selecionar"}
         </p>
         <div className="flex items-center gap-2">
+          <BotaoZoneamento
+            ligado={zoneamento}
+            aoAlternar={() => setZoneamento((v) => !v)}
+            indisponivel={!wms.ativo}
+          />
           <button
             type="button"
             onClick={() => setModoArea((v) => !v)}
@@ -242,6 +253,7 @@ export default function MapaResultadosLeaflet({
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
+          <CamadaZoneamento wms={wms} visivel={zoneamento} />
           <Enquadrar pontos={noMapa} />
           <SelecaoPorArea ativo={modoArea} aoSelecionar={selecionarNaCaixa} />
 

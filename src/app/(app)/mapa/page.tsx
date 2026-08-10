@@ -4,6 +4,7 @@ import { exigirUsuario } from "@/lib/authz";
 import { numero } from "@/lib/format";
 import { terrenosComCoordenada } from "@/server/queries";
 import { MapaTerrenos } from "@/components/mapa/mapa-terrenos";
+import { zoneamentoWms } from "@/lib/geo/geosampa";
 import { Cartao, TituloPagina, Vazio } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Mapa" };
@@ -17,7 +18,7 @@ export default async function MapaPage() {
     <>
       <TituloPagina
         titulo="Mapa"
-        descricao={`${numero(terrenos.length)} terreno(s) com coordenada. O tamanho do círculo indica a área; a cor, a faixa de pontuação.`}
+        descricao={`${numero(terrenos.length)} terreno(s) com coordenada. O tamanho do círculo indica a área; a cor, a faixa de pontuação. A mancha por baixo é o zoneamento vigente da Prefeitura.`}
       />
 
       {terrenos.length === 0 ? (
@@ -28,7 +29,7 @@ export default async function MapaPage() {
       ) : (
         <Cartao className="overflow-hidden">
           <div className="h-[70vh] min-h-[420px] w-full">
-            <MapaTerrenos terrenos={terrenos} />
+            <MapaTerrenos terrenos={terrenos} wms={zoneamentoWms()} />
           </div>
           <div className="flex flex-wrap gap-4 border-t border-slate-200 px-5 py-3 text-xs text-slate-500">
             <span className="flex items-center gap-1.5">
