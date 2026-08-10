@@ -7,6 +7,7 @@ import { classificarPagina, ehTipoQueNaoInteressa } from "@/lib/busca/paginas";
 import { ordenarPorPrioridade } from "@/lib/busca/ordenacao";
 import { normalizar } from "@/lib/busca/regioes";
 import {
+  ehVariacao,
   MAX_CONSULTAS,
   montarConsultas,
   portais,
@@ -426,6 +427,10 @@ export async function executarBusca(
       precoMax: params.precoMax,
       regioes: params.regioes,
       termosExtras: params.termosExtras,
+      exigirArea: params.exigirArea,
+      exigirZonaConfirmada: params.exigirZonaConfirmada,
+      variacoes: params.variacoes,
+      maxConsultas: params.maxConsultas,
       provedor: provedorConfigurado(),
       consultas: consultasEfetivas,
       totalBruto: brutos.length,
@@ -494,6 +499,39 @@ function calcularConfianca(
 // ---------------------------------------------------------------------------
 // Leitura
 // ---------------------------------------------------------------------------
+
+/**
+ * Reconstrói o filtro de uma busca já feita, para rodá-la de novo igual.
+ *
+ * Buscas anteriores à gravação do filtro completo caem nos padrões — os
+ * mesmos que o formulário oferece —, então repetir uma busca antiga funciona,
+ * só não garante fidelidade absoluta ao que foi pedido na época.
+ */
+export function parametrosDaBusca(busca: {
+  zonas: string[];
+  areaMin: number | null;
+  areaMax: number | null;
+  precoMax: number | null;
+  regioes: string[];
+  termosExtras: string | null;
+  exigirArea: boolean;
+  exigirZonaConfirmada: boolean;
+  variacoes: string[];
+  maxConsultas: number;
+}): ParametrosBusca {
+  return {
+    zonas: busca.zonas as ZonaChave[],
+    areaMin: busca.areaMin,
+    areaMax: busca.areaMax,
+    precoMax: busca.precoMax,
+    regioes: busca.regioes,
+    termosExtras: busca.termosExtras,
+    exigirArea: busca.exigirArea,
+    exigirZonaConfirmada: busca.exigirZonaConfirmada,
+    variacoes: busca.variacoes.filter(ehVariacao),
+    maxConsultas: busca.maxConsultas,
+  };
+}
 
 export async function obterBusca(id: string) {
   return prisma.busca.findUnique({

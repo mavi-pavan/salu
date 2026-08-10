@@ -399,6 +399,13 @@ model Busca {
   precoMax     Float?
   regioes      String[]
   termosExtras String?
+  /// O filtro completo, para poder repetir a busca sem preencher tudo de novo.
+  /// Sem estes quatro, "repetir" rodaria com outros parâmetros e a comparação
+  /// com a busca anterior — que é o motivo de repetir — perderia o sentido.
+  exigirArea           Boolean  @default(true)
+  exigirZonaConfirmada Boolean  @default(false)
+  variacoes            String[]
+  maxConsultas         Int      @default(6)
   provedor     String
   consultas    String[] /// as queries realmente disparadas, para auditar o resultado
   totalBruto   Int      @default(0) /// itens retornados pelo provedor

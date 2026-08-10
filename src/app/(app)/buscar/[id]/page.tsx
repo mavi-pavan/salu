@@ -17,7 +17,8 @@ import { obterConfiguracao } from "@/server/queries";
 import { MapaResultados } from "@/components/mapa/mapa-resultados";
 import { zoneamentoWms } from "@/lib/geo/geosampa";
 import type { Premissas } from "@/lib/viabilidade";
-import { alternarDescarte, excluirBusca } from "@/server/actions-busca";
+import { alternarDescarte, excluirBusca, repetirBusca } from "@/server/actions-busca";
+import { BotaoEnvio } from "@/components/botao-envio";
 import {
   Aviso,
   Botao,
@@ -33,6 +34,8 @@ import {
 
 export const metadata: Metadata = { title: "Resultados da busca" };
 export const dynamic = "force-dynamic";
+/** Repetir a busca roda daqui, e ela leva o mesmo tempo da busca original. */
+export const maxDuration = 60;
 
 const ORIGEM_ZONA: Record<string, { rotulo: string; classe: string; ajuda: string }> = {
   GEOSAMPA: {
@@ -99,6 +102,14 @@ export default async function ResultadosPage({ params }: { params: Promise<{ id:
             <BotaoLink href="/buscar" variante="secundario">
               Nova busca
             </BotaoLink>
+            {editavel ? (
+              <form action={repetirBusca}>
+                <input type="hidden" name="buscaId" value={busca.id} />
+                <BotaoEnvio carregando="Procurando…" variante="secundario">
+                  Repetir esta busca
+                </BotaoEnvio>
+              </form>
+            ) : null}
             {editavel ? (
               <form action={excluirBusca}>
                 <input type="hidden" name="buscaId" value={busca.id} />

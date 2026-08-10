@@ -196,6 +196,17 @@ seus termos de uso proíbem raspagem automatizada. Consultar um provedor de
 busca e ler o que ele já indexou é o caminho que funciona e não passa por cima
 disso. O app nunca abre o portal fingindo ser um navegador.
 
+### A rotina de segunda-feira
+
+Toda busca guarda o filtro inteiro que usou, e a lista de buscas anteriores tem
+um botão **Repetir**. Um clique roda o mesmo filtro de novo e a tela marca como
+**novo** só o que entrou no mercado desde a última vez — ordenado primeiro.
+
+É o que separa prospecção de curiosidade: em vez de preencher o formulário de
+memória e reler os mesmos vinte anúncios, ele abre, clica e olha as três linhas
+verdes. A comparação é por host mais caminho, sem query string, senão o mesmo
+anúncio voltaria do buscador com `utm` diferente e seria novidade eterna.
+
 ### Como a busca mira no eixo
 
 A ZEU não é o bairro: é uma faixa em torno da estação. Por isso a busca pergunta

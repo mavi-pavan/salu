@@ -8,7 +8,7 @@ import { exigirEdicao, SemPermissaoError } from "@/lib/authz";
 import { buscaSchema, errosDoZod, objetoDoForm } from "@/lib/validation";
 import type { EstadoForm } from "@/lib/form-state";
 import type { ZonaChave } from "@/lib/zeu";
-import { executarBusca } from "./busca";
+import { executarBusca, parametrosDaBusca } from "./busca";
 
 export async function buscarNaInternet(
   _estado: EstadoForm,
@@ -102,4 +102,34 @@ export async function excluirBusca(formData: FormData): Promise<void> {
     revalidatePath("/buscar");
     redirect("/buscar");
   }
+}
+
+/**
+ * Roda de novo uma busca já feita, com o mesmo filtro.
+ *
+ * É o que transforma prospecção em rotina: na segunda-feira ele abre a busca
+ * da semana passada, clica, e a tela nova marca como "novo" só o que entrou no
+ * mercado desde então. Preencher o formulário de memória toda semana era o
+ * atrito que fazia isso não acontecer.
+ */
+export async function repetirBusca(formData: FormData): Promise<void> {
+  let destino: string;
+
+  try {
+    const usuario = await exigirEdicao();
+    const id = String(formData.get("buscaId") ?? "");
+    if (!id) return;
+
+    const anterior = await prisma.busca.findUnique({ where: { id } });
+    if (!anterior) return;
+
+    const resumo = await executarBusca(parametrosDaBusca(anterior), usuario.id);
+    destino = `/buscar/${resumo.buscaId}`;
+  } catch (erro) {
+    console.error(erro);
+    return;
+  }
+
+  revalidatePath("/buscar");
+  redirect(destino);
 }

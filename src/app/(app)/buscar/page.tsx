@@ -5,6 +5,8 @@ import { exigirUsuario, podeEditar } from "@/lib/authz";
 import { regioesPorSetor } from "@/lib/busca/regioes";
 import { brlCompacto, dataHora, m2, numero } from "@/lib/format";
 import { estadoDaBusca, listarBuscas } from "@/server/busca";
+import { repetirBusca } from "@/server/actions-busca";
+import { BotaoEnvio } from "@/components/botao-envio";
 import { diagnosticoZoneamento } from "@/server/diagnostico";
 import { FormBusca } from "@/components/form-busca";
 import {
@@ -109,7 +111,7 @@ export default async function BuscarPage({
         <Cartao>
           <CartaoCabecalho
             titulo="Buscas anteriores"
-            descricao="Repetir o mesmo filtro depois mostra o que entrou no mercado desde então."
+            descricao="Repetir roda o mesmo filtro de novo e marca como novo só o que entrou no mercado desde a última vez."
           />
           {buscas.length === 0 ? (
             <div className="px-5 py-4">
@@ -121,10 +123,10 @@ export default async function BuscarPage({
           ) : (
             <ul className="divide-y divide-slate-100">
               {buscas.map((busca) => (
-                <li key={busca.id}>
+                <li key={busca.id} className="flex items-center gap-2 pr-5 transition-colors hover:bg-slate-50">
                   <Link
                     href={`/buscar/${busca.id}`}
-                    className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 transition-colors hover:bg-slate-50"
+                    className="flex flex-1 flex-wrap items-center justify-between gap-3 px-5 py-3.5"
                   >
                     <div className="min-w-0">
                       <p className="flex flex-wrap items-center gap-1.5 text-sm font-medium text-slate-800">
@@ -162,6 +164,14 @@ export default async function BuscarPage({
                       </div>
                     </div>
                   </Link>
+                  {podeEditar(usuario.papel) ? (
+                    <form action={repetirBusca}>
+                      <input type="hidden" name="buscaId" value={busca.id} />
+                      <BotaoEnvio carregando="…" variante="secundario">
+                        Repetir
+                      </BotaoEnvio>
+                    </form>
+                  ) : null}
                 </li>
               ))}
             </ul>
