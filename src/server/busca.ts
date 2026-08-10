@@ -3,7 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { buscarNaWeb, ehDemo, provedorConfigurado, type ItemWeb } from "@/lib/busca/provedores";
 import { dominio, extrairTudo, normalizarZonaTexto } from "@/lib/busca/extrair";
-import { classificarPagina } from "@/lib/busca/paginas";
+import { classificarPagina, ehTipoQueNaoInteressa } from "@/lib/busca/paginas";
 import { ordenarPorPrioridade } from "@/lib/busca/ordenacao";
 import { normalizar } from "@/lib/busca/regioes";
 import {
@@ -186,6 +186,11 @@ export async function executarBusca(
   const unicos = brutos.filter((item) => {
     if (!pareceAnuncioDeTerreno(item)) return false;
 
+    // Apartamento que cita "terreno do condomínio de 5.000 m²" passava no
+    // filtro de palavra-chave e ainda trazia uma área grande junto — parecia
+    // um ótimo candidato e não era terreno nenhum.
+    if (ehTipoQueNaoInteressa(item.titulo)) return false;
+
     // Página de busca do portal ("1.234 terrenos à venda") não é candidato:
     // não tem área, preço nem endereço, e o que ela lista muda toda hora.
     if (classificarPagina(item.titulo, item.url) === "listagem") {
@@ -245,7 +250,12 @@ export async function executarBusca(
     let latitude: number | null = null;
     let longitude: number | null = null;
 
-    const consultaGeo = consultaDeEndereco({ endereco: dados.endereco, bairro: dados.bairro });
+    const consultaGeo = consultaDeEndereco({
+      endereco: dados.endereco,
+      numero: dados.numero,
+      cep: dados.cep,
+      bairro: dados.bairro,
+    });
     if (consultaGeo && consultasDeRede < LIMITE_GEOCODE) {
       const { ponto, doCache } = await geocodificar(consultaGeo);
       // Só chamada de rede consome o orçamento: o limite existe por causa do
@@ -280,6 +290,8 @@ export async function executarBusca(
     areaM2: number | null;
     precoBRL: number | null;
     endereco: string | null;
+    numero: string | null;
+    cep: string | null;
     bairro: string | null;
     latitude: number | null;
     longitude: number | null;
@@ -343,6 +355,8 @@ export async function executarBusca(
       areaM2: dados.areaM2,
       precoBRL: dados.precoBRL,
       endereco: dados.endereco,
+      numero: dados.numero,
+      cep: dados.cep,
       bairro: dados.bairro,
       latitude: c.latitude,
       longitude: c.longitude,

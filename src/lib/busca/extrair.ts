@@ -154,16 +154,108 @@ export function extrairPreco(texto: string): number | null {
   return valores.length ? Math.max(...valores) : null;
 }
 
-const RE_LOGRADOURO =
-  /\b(rua|avenida|av\.?|alameda|al\.?|travessa|praça|estrada|rodovia|largo|viela)\s+([A-ZÀ-Ú][\wÀ-ú'.-]*(?:\s+(?:d[aeo]s?|e|[A-ZÀ-Ú][\wÀ-ú'.-]*)){0,5})/i;
+/**
+ * Aceita "rua", "Rua" e "RUA" — anúncio vem nas três formas — sem ligar o flag
+ * `i` na expressão inteira.
+ *
+ * O flag global custou caro: com ele, o `[A-ZÀ-Ú]` que exige inicial maiúscula
+ * no nome da via passava a aceitar minúscula também, e "Praça da Árvore. CEP"
+ * era lido como logradouro — levando o começo do CEP junto como número.
+ */
+function comQualquerCaixa(palavra: string): string {
+  const capitalizada = palavra.charAt(0).toUpperCase() + palavra.slice(1);
+  return `(?:${palavra}|${capitalizada}|${palavra.toUpperCase()})`;
+}
+
+const VIAS = [
+  "rua",
+  "avenida",
+  String.raw`av\.?`,
+  "alameda",
+  String.raw`al\.?`,
+  "travessa",
+  "praça",
+  "estrada",
+  "rodovia",
+  "largo",
+  "viela",
+];
+
+const RE_LOGRADOURO = new RegExp(
+  String.raw`\b(${VIAS.map(comQualquerCaixa).join("|")})\s+` +
+    // "Praça da República" começa por conectivo, então ele é aceito antes da
+    // primeira palavra maiúscula — mas uma palavra maiúscula tem que existir.
+    String.raw`((?:d[aeo]s?\s+)?[A-ZÀ-Ú][\wÀ-ú'.-]*(?:\s+(?:d[aeo]s?|e|[A-ZÀ-Ú][\wÀ-ú'.-]*)){0,5})`,
+);
 
 export function extrairLogradouro(texto: string): string | null {
-  const achado = texto.match(RE_LOGRADOURO);
+  const achado = RE_LOGRADOURO.exec(texto);
   if (!achado) return null;
   const via = (achado[1] ?? "").replace(/\bav\.?\b/i, "Avenida").replace(/\bal\.?\b/i, "Alameda");
   const nome = (achado[2] ?? "").trim().replace(/[,;.]$/, "");
   if (nome.length < 3) return null;
   return `${via.charAt(0).toUpperCase()}${via.slice(1).toLowerCase()} ${nome}`.trim();
+}
+
+/**
+ * Número do logradouro — "Rua Domingos de Morais, 1842".
+ *
+ * Vale muito mais do que parece. Geocodificar só o nome da rua devolve o meio
+ * dela, e a ZEU é uma faixa: o meio da Domingos de Morais pode estar em zona
+ * diferente do lote que está na ponta. Com o número, a coordenada cai no
+ * imóvel, e a confirmação de zona passa a valer.
+ *
+ * Fica de fora o que vem depois de "nº"/"casa"/"apto" com valor alto demais
+ * para ser número de porta, e o que na verdade é a metragem.
+ */
+/*
+ * As três negativas depois do número não são exagero — cada uma trava um caso
+ * real que apareceu no teste:
+ *
+ *   (?!\d)         o número tem que estar inteiro. Sem isto, "800 mil" casava
+ *                  com "80", que sobra fora da negativa de "mil".
+ *   (?!\.\d{3})    "1.250 m²" não pode virar o número de porta "1".
+ *   (?!\s*m²|mil)  metragem e valor não são endereço.
+ */
+const RE_NUMERO_LOGRADOURO = new RegExp(
+  RE_LOGRADOURO.source +
+    String.raw`\s*,?\s*(?:n[º°.]?\s*)?(\d{1,3}(?:\.\d{3})+|\d{1,5})(?!\d)(?!\.\d{3})(?!\s*(?:m²|m2|mil|milh|hectare|ha\b))`,
+);
+
+export function extrairNumero(texto: string): string | null {
+  const bruto = RE_NUMERO_LOGRADOURO.exec(texto)?.[3];
+  if (!bruto) return null;
+
+  const numero = bruto.replace(/\./g, "");
+
+  // O começo de um CEP é cinco dígitos logo depois de um nome próprio, que é
+  // exatamente o formato de um número de porta. Quando os dois coincidem, é
+  // CEP: número de porta com cinco dígitos e zero à esquerda não existe.
+  const cep = extrairCep(texto);
+  if (cep && cep.replace("-", "").startsWith(numero) && numero.length >= 4) return null;
+
+  // Número de porta acima de 30.000 não existe em São Paulo; é código ou área.
+  const valor = Number(numero);
+  return valor > 0 && valor <= 30_000 ? numero : null;
+}
+
+/**
+ * CEP no texto do anúncio.
+ *
+ * É a localização mais precisa que um anúncio oferece — melhor até que rua e
+ * número, porque não depende de o geocodificador conhecer a numeração.
+ */
+const RE_CEP = /\b(\d{5})-?(\d{3})\b/;
+
+export function extrairCep(texto: string): string | null {
+  const achado = texto.match(RE_CEP);
+  if (!achado) return null;
+  const cep = `${achado[1]}-${achado[2]}`;
+  // CEP de São Paulo capital vai de 01000-000 a 05999-999 e 08000-000 a
+  // 08499-999. Fora disso, provavelmente não é CEP: é telefone ou código.
+  const prefixo = Number(achado[1]);
+  const dentro = (prefixo >= 1000 && prefixo <= 5999) || (prefixo >= 8000 && prefixo <= 8499);
+  return dentro ? cep : null;
 }
 
 export function extrairBairro(texto: string): string | null {
@@ -277,6 +369,8 @@ export interface DadosExtraidos {
   areaM2: number | null;
   precoBRL: number | null;
   endereco: string | null;
+  numero: string | null;
+  cep: string | null;
   bairro: string | null;
   zonaTexto: string | null;
   estacao: string | null;
@@ -289,6 +383,8 @@ export function extrairTudo(titulo: string, trecho?: string | null): DadosExtrai
     areaM2: extrairArea(texto),
     precoBRL: extrairPreco(texto),
     endereco: extrairLogradouro(texto),
+    numero: extrairNumero(texto),
+    cep: extrairCep(texto),
     bairro: extrairBairro(texto),
     zonaTexto: extrairZonaMencionada(texto),
     estacao: extrairEstacao(texto),

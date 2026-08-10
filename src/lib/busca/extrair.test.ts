@@ -5,9 +5,11 @@ import {
   dominio,
   extrairArea,
   extrairBairro,
+  extrairCep,
   extrairDistanciaEstacaoM,
   extrairEstacao,
   extrairLogradouro,
+  extrairNumero,
   extrairPreco,
   extrairTudo,
   extrairZonaMencionada,
@@ -209,5 +211,59 @@ describe("palavra de transporte", () => {
   it('não acha "trem" dentro de outra palavra', () => {
     expect(extrairEstacao("Terreno em extremo bom estado na Saúde")).toBeNull();
     expect(extrairEstacao("Lote tremendamente bem localizado na Lapa")).toBeNull();
+  });
+});
+
+describe("número e CEP: o que decide a precisão da coordenada", () => {
+  it("extrai o número do logradouro", () => {
+    // Geocodificar só a rua devolve o meio dela; numa via longa, o meio pode
+    // estar em zona diferente do lote.
+    expect(extrairNumero("Terreno na Rua Domingos de Morais, 1842")).toBe("1842");
+    expect(extrairNumero("Av. Jabaquara, 2210 - Saúde")).toBe("2210");
+    expect(extrairNumero("Rua Vergueiro nº 987, Vila Mariana")).toBe("987");
+  });
+
+  it("não confunde metragem com número de porta", () => {
+    expect(extrairNumero("Terreno na Rua Vergueiro, 1.250 m² de área")).toBeNull();
+    expect(extrairNumero("Rua Luís Góis, 800 mil de entrada")).toBeNull();
+  });
+
+  it("devolve null quando o anúncio não dá o número", () => {
+    expect(extrairNumero("Terreno na Rua Domingos de Morais, Vila Mariana")).toBeNull();
+    expect(extrairNumero("Terreno na Vila Mariana")).toBeNull();
+  });
+
+  it("extrai CEP da capital, com ou sem hífen", () => {
+    expect(extrairCep("Terreno na Vila Mariana, CEP 04101-300")).toBe("04101-300");
+    expect(extrairCep("Endereço: 01310100")).toBe("01310-100");
+  });
+
+  it("ignora número de oito dígitos que não é CEP da capital", () => {
+    // Telefone, código de anúncio e CEP de outra cidade caem aqui.
+    expect(extrairCep("Contato 11987654321")).toBeNull();
+    expect(extrairCep("CEP 90210-000")).toBeNull();
+  });
+});
+
+describe("caixa do texto no logradouro", () => {
+  it("aceita as três formas em que o anúncio escreve a via", () => {
+    expect(extrairLogradouro("TERRENO NA RUA DOMINGOS DE MORAIS, 1842")).toContain("DOMINGOS");
+    expect(extrairLogradouro("Terreno na Praça da República, 123")).toBe("Praça da República");
+    expect(extrairNumero("TERRENO NA RUA DOMINGOS DE MORAIS, 1842")).toBe("1842");
+  });
+
+  it("exige nome próprio, mesmo perdendo anúncio todo em minúscula", () => {
+    // Decisão consciente: aceitar nome em minúscula faria "rua tranquila e
+    // arborizada" virar logradouro, que seria geocodificado e confirmaria uma
+    // zona errada com toda a confiança. Perder o anúncio é o erro mais barato.
+    expect(extrairLogradouro("terreno na rua vergueiro, 987")).toBeNull();
+    expect(extrairLogradouro("terreno em rua tranquila e arborizada")).toBeNull();
+  });
+
+  it("não lê o começo do CEP como número de porta", () => {
+    // "Praça da Árvore. CEP 04043-100" era lido como logradouro + número 04043.
+    const texto = "Rua Luís Góis, próximo ao metrô Praça da Árvore. CEP 04043-100.";
+    expect(extrairNumero(texto)).toBeNull();
+    expect(extrairCep(texto)).toBe("04043-100");
   });
 });

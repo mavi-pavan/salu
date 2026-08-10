@@ -129,17 +129,62 @@ export async function geocodificar(consultaBruta: string): Promise<RespostaGeoco
   return { ponto: resultado, doCache: false };
 }
 
-/** Monta a string de busca a partir do que foi possível extrair do anúncio. */
+/**
+ * Monta a string de busca a partir do que foi possível extrair do anúncio.
+ *
+ * A precisão daqui decide se a zona vai ser confirmada ou não, e as opções não
+ * são equivalentes:
+ *
+ *   rua + número  -> cai no lote. É o que permite afirmar a zona.
+ *   CEP           -> cai na face da quadra. Quase tão bom, e independe de o
+ *                    geocodificador conhecer a numeração da rua.
+ *   só a rua      -> cai no meio dela. Numa via longa como a Domingos de
+ *                    Morais, o meio pode estar em zona diferente das pontas.
+ *   só o bairro   -> cai no centroide. Serve para situar, não para confirmar.
+ *
+ * Por isso o número e o CEP entram juntos quando existem: um corrige o outro
+ * quando o geocodificador não conhece a numeração.
+ */
 export function consultaDeEndereco(partes: {
   endereco?: string | null;
+  numero?: string | null;
+  cep?: string | null;
   bairro?: string | null;
   cidade?: string;
 }): string | null {
-  const pedacos = [partes.endereco, partes.bairro, partes.cidade ?? "São Paulo", "SP", "Brasil"]
+  // Sem logradouro, CEP nem bairro, sobra "São Paulo" — isso não diz nada.
+  if (!partes.endereco && !partes.bairro && !partes.cep) return null;
+
+  const logradouro =
+    partes.endereco && partes.numero
+      ? `${partes.endereco}, ${partes.numero}`
+      : (partes.endereco ?? null);
+
+  const pedacos = [
+    logradouro,
+    partes.bairro,
+    partes.cidade ?? "São Paulo",
+    "SP",
+    partes.cep,
+    "Brasil",
+  ]
     .filter(Boolean)
     .map((p) => String(p).trim());
 
-  // Sem logradouro nem bairro, sobra "São Paulo" — geocodificar isso não diz nada.
-  if (!partes.endereco && !partes.bairro) return null;
   return pedacos.join(", ");
+}
+
+/** Quanto se pode confiar na coordenada, dado o que o anúncio trazia. */
+export type PrecisaoEndereco = "lote" | "quadra" | "via" | "bairro";
+
+export function precisaoDoEndereco(partes: {
+  endereco?: string | null;
+  numero?: string | null;
+  cep?: string | null;
+  bairro?: string | null;
+}): PrecisaoEndereco {
+  if (partes.endereco && partes.numero) return "lote";
+  if (partes.cep) return "quadra";
+  if (partes.endereco) return "via";
+  return "bairro";
 }

@@ -188,6 +188,31 @@ export function tituloDeListagem(titulo: string): boolean {
   return TITULOS_DE_LISTAGEM.some((re) => re.test(titulo));
 }
 
+/**
+ * Tipos de imóvel que nunca são oportunidade de terreno, por mais que o texto
+ * fale em "terreno".
+ *
+ * Anúncio de apartamento cita "terreno do condomínio de 5.000 m²"; sala e
+ * galpão citam a área do terreno da empresa. Todos passavam pelo filtro de
+ * palavra-chave e ainda levavam uma área grande junto, o que os fazia parecer
+ * bons candidatos.
+ *
+ * Casa e sobrado ficam de fora desta lista de propósito: comprar casa para
+ * demolir é caminho normal de incorporação em eixo, e muita oferta boa está
+ * anunciada assim.
+ */
+const RE_NAO_E_TERRENO =
+  /^\s*(?:apartamento|apto\.?|cobertura|studio|kitnet|flat|sala\s+comercial|conjunto\s+comercial|loja|galp[ãa]o|vaga\s+de\s+garagem|pr[ée]dio\s+comercial)\b/i;
+
+/**
+ * Filtro pelo tipo anunciado, lido só do título — que é onde o portal declara
+ * o que está vendendo. No corpo do texto, "apartamento" aparece em anúncio de
+ * terreno como argumento ("ideal para prédio de apartamentos").
+ */
+export function ehTipoQueNaoInteressa(titulo: string): boolean {
+  return RE_NAO_E_TERRENO.test(titulo.trim());
+}
+
 export function classificarPagina(titulo: string, url: string): TipoPagina {
   if (temIdDeAnuncio(url)) return "anuncio";
   if (tituloDeListagem(titulo)) return "listagem";

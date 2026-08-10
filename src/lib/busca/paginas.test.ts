@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { classificarPagina, temIdDeAnuncio, tituloDeListagem } from "./paginas";
+import {
+  classificarPagina,
+  ehTipoQueNaoInteressa,
+  temIdDeAnuncio,
+  tituloDeListagem,
+} from "./paginas";
 
 /**
  * Os endereços abaixo seguem o formato real de cada portal. É o que separa
@@ -221,5 +226,35 @@ describe("subdomínio de busca", () => {
         "listagem",
       );
     }
+  });
+});
+
+describe("tipo de imóvel que não é terreno", () => {
+  it("descarta apartamento, sala e galpão pelo título", () => {
+    // Todos citam "terreno" no corpo e traziam uma área grande junto, o que
+    // os fazia parecer bons candidatos.
+    const titulos = [
+      "Apartamento à venda, 80 m² - condomínio em terreno de 5.000 m²",
+      "Cobertura duplex à venda na Vila Mariana",
+      "Sala comercial à venda, 45 m² no Paraíso",
+      "Galpão à venda, terreno de 3.000 m² na Lapa",
+      "Vaga de garagem à venda",
+    ];
+    for (const t of titulos) {
+      expect(ehTipoQueNaoInteressa(t), t).toBe(true);
+    }
+  });
+
+  it("mantém casa e sobrado, que viram terreno por demolição", () => {
+    // Comprar casa para demolir é caminho normal de incorporação em eixo.
+    expect(ehTipoQueNaoInteressa("Casa à venda, terreno de 500 m² na Saúde")).toBe(false);
+    expect(ehTipoQueNaoInteressa("Sobrado à venda em terreno de 800 m²")).toBe(false);
+  });
+
+  it("não descarta terreno que menciona apartamento como argumento", () => {
+    // "ideal para prédio de apartamentos" é elogio ao terreno, não o produto.
+    expect(
+      ehTipoQueNaoInteressa("Terreno à venda, 1.200 m² - ideal para prédio de apartamentos"),
+    ).toBe(false);
   });
 });

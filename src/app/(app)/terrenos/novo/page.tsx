@@ -32,6 +32,8 @@ export default async function NovoTerrenoPage({
         apelido: [resultado.endereco, resultado.bairro].filter(Boolean).join(" — ") ||
           resultado.titulo.slice(0, 100),
         logradouro: resultado.endereco ?? "",
+        numero: resultado.numero ?? "",
+        cep: resultado.cep ?? "",
         bairro: resultado.bairro ?? "",
         areaTerreno: resultado.areaM2,
         precoPedido: resultado.precoBRL,

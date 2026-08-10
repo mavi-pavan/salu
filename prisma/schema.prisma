@@ -451,6 +451,10 @@ model ResultadoBusca {
   areaM2   Float?
   precoBRL Float?
   endereco String?
+  /// Número e CEP quando o anúncio traz. São eles que decidem se a coordenada
+  /// cai no lote ou no meio da rua — e, com ela, se a zona pode ser afirmada.
+  numero   String?
+  cep      String?
   bairro   String?
 
   latitude  Float?
