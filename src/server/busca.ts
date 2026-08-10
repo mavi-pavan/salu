@@ -571,6 +571,70 @@ export function vereditoDoResultado(
 }
 
 /**
+ * O que o mapa precisa saber de cada anúncio.
+ *
+ * Vai tudo mastigado do servidor porque o mapa é componente cliente e não
+ * alcança nem o Prisma nem as funções de viabilidade — e porque a conta tem
+ * que ser a mesma da lista e da ficha, não uma terceira.
+ */
+export interface PontoResultado {
+  id: string;
+  titulo: string;
+  url: string;
+  fonte: string;
+  latitude: number;
+  longitude: number;
+  areaM2: number | null;
+  precoBRL: number | null;
+  precoPorPotencial: number | null;
+  bairro: string | null;
+  estacaoProxima: string | null;
+  distanciaEstacaoM: number | null;
+  zona: string | null;
+  origemZona: string;
+  novo: boolean;
+  veredito: { cabe: boolean; rotulo: string } | null;
+}
+
+export function pontosDoMapa(
+  resultados: ResultadoDetalhado[],
+  premissas: Premissas,
+): PontoResultado[] {
+  return resultados
+    .filter((r) => r.latitude != null && r.longitude != null)
+    .map((r) => {
+      const v = vereditoDoResultado(r, premissas);
+      return {
+        id: r.id,
+        titulo: r.titulo,
+        url: r.url,
+        fonte: r.fonte,
+        latitude: r.latitude as number,
+        longitude: r.longitude as number,
+        areaM2: r.areaM2,
+        precoBRL: r.precoBRL,
+        precoPorPotencial: precoPorPotencialDoResultado(r),
+        bairro: r.bairro,
+        estacaoProxima: r.estacaoProxima,
+        distanciaEstacaoM: r.distanciaEstacaoM,
+        zona: r.zonaDetectada,
+        origemZona: r.origemZona,
+        novo: r.novo,
+        veredito:
+          v.estado === "ok"
+            ? {
+                cabe: v.folga >= 0,
+                rotulo:
+                  v.folga >= 0
+                    ? `cabe na conta, folga de ${Math.round(v.folgaPct)}%`
+                    : `${Math.abs(Math.round(v.folgaPct))}% acima do teto`,
+              }
+            : null,
+      };
+    });
+}
+
+/**
  * R$ por m² de potencial construtivo — a métrica que permite comparar
  * anúncios de tamanhos diferentes já na tela de resultados.
  */

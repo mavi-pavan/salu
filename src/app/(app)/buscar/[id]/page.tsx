@@ -8,11 +8,13 @@ import { linkGeoSampa } from "@/lib/geo/zoneamento";
 import {
   ehPortalConhecido,
   obterBusca,
+  pontosDoMapa,
   precoPorPotencialDoResultado,
   vereditoDoResultado,
   type ResultadoDetalhado,
 } from "@/server/busca";
 import { obterConfiguracao } from "@/server/queries";
+import { MapaResultados } from "@/components/mapa/mapa-resultados";
 import type { Premissas } from "@/lib/viabilidade";
 import { alternarDescarte, excluirBusca } from "@/server/actions-busca";
 import {
@@ -21,6 +23,7 @@ import {
   BotaoLink,
   Cartao,
   CartaoCabecalho,
+  CartaoCorpo,
   Etiqueta,
   Metrica,
   TituloPagina,
@@ -77,6 +80,8 @@ export default async function ResultadosPage({ params }: { params: Promise<{ id:
   const nenhumFecha =
     comConta.length > 0 && comConta.every((v) => v.estado === "premissas_inviaveis");
   const areaTotal = comArea.reduce((soma, r) => soma + (r.areaM2 ?? 0), 0);
+  const pontos = pontosDoMapa(ativos, premissas);
+  const semCoordenada = ativos.length - pontos.length;
 
   return (
     <>
@@ -214,6 +219,24 @@ export default async function ResultadosPage({ params }: { params: Promise<{ id:
           </details>
         </Cartao>
       </div>
+
+      {pontos.length > 0 ? (
+        <div className="mb-6">
+          <Cartao>
+            <CartaoCabecalho
+              titulo="No mapa"
+              descricao="Clique nos círculos para escolher, ou use “Selecionar por área” e arraste sobre um trecho do eixo. Os escolhidos aparecem embaixo, com o botão para mandar ao funil."
+            />
+            <CartaoCorpo>
+              <MapaResultados
+                pontos={pontos}
+                semCoordenada={semCoordenada}
+                editavel={editavel}
+              />
+            </CartaoCorpo>
+          </Cartao>
+        </div>
+      ) : null}
 
       {ativos.length > 0 ? (
         <div className="mb-6">
