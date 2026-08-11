@@ -268,11 +268,28 @@ async function PainelDiagnostico() {
             <code>{d.wms.url}</code> · camada <code>{d.wms.camada}</code>
           </p>
           {!d.wms.ok ? (
-            <p className="mt-1.5">
-              Ajuste <code>GEOSAMPA_WMS_URL</code> ou <code>GEOSAMPA_WMS_CAMADA</code> nas
-              variáveis de ambiente. A confirmação de zona de cada anúncio não depende deste
-              serviço e continua funcionando.
-            </p>
+            <>
+              <p className="mt-2 font-semibold">Endereços testados:</p>
+              <ul className="mt-1 flex flex-col gap-1">
+                {d.wmsCandidatos.map((c) => (
+                  <li key={c.url} className="break-all">
+                    {c.ok ? "✓" : "✗"} <code>{c.url}</code> — {c.detalhe}
+                  </li>
+                ))}
+              </ul>
+              {d.wmsCandidatos.some((c) => c.ok) ? (
+                <p className="mt-2 font-semibold">
+                  Funciona: coloque{" "}
+                  <code>GEOSAMPA_WMS_URL = {d.wmsCandidatos.find((c) => c.ok)?.url}</code> nas
+                  variáveis de ambiente da Vercel e faça o redeploy.
+                </p>
+              ) : (
+                <p className="mt-2">
+                  Nenhum endereço respondeu. A camada no mapa é conforto visual — a confirmação de
+                  zona de cada anúncio usa outro serviço, que continua funcionando.
+                </p>
+              )}
+            </>
           ) : null}
         </div>
 

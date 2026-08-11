@@ -51,18 +51,37 @@ export interface DiagnosticoWms {
   camadaPublicada: boolean | null;
 }
 
-async function testarWms(): Promise<DiagnosticoWms> {
-  const wms = zoneamentoWms();
-  const url = new URL(wms.url);
-  url.searchParams.set("service", "WMS");
-  url.searchParams.set("request", "GetCapabilities");
-  url.searchParams.set("version", "1.1.1");
+/**
+ * Endereços plausíveis do serviço de imagem, testados em paralelo.
+ *
+ * O host das consultas se chama `wfs.` e pode não atender WMS; o GeoServer
+ * também publica um endpoint global além do por workspace. Em vez de eu
+ * adivinhar qual é e mandar alguém testar por tentativa e erro, o app pergunta
+ * a todos e diz qual respondeu — foi assim que o nome da camada e o 400 do
+ * Serper foram resolvidos.
+ */
+function candidatosWms(configurado: string): string[] {
+  const alternativas = [
+    configurado,
+    configurado.replace("://wfs.", "://wms."),
+    configurado.replace(/\/geoserver\/[^/]+\/wms$/, "/geoserver/wms"),
+    configurado.replace("://wfs.", "://wms.").replace(/\/geoserver\/[^/]+\/wms$/, "/geoserver/wms"),
+    "https://geosampa.prefeitura.sp.gov.br/geoserver/geoportal/wms",
+  ];
+  return [...new Set(alternativas)];
+}
 
-  const base = { url: wms.url, camada: wms.camada };
+async function testarUmWms(url: string, camada: string): Promise<DiagnosticoWms> {
+  const alvo = new URL(url);
+  alvo.searchParams.set("service", "WMS");
+  alvo.searchParams.set("request", "GetCapabilities");
+  alvo.searchParams.set("version", "1.1.1");
+
+  const base = { url, camada };
 
   let resposta: Response;
   try {
-    resposta = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+    resposta = await fetch(alvo, { signal: AbortSignal.timeout(15_000) });
   } catch (erro) {
     const causa = erro instanceof Error ? erro.message : String(erro);
     return { ...base, ok: false, camadaPublicada: null, detalhe: `não respondeu: ${causa}` };
@@ -74,13 +93,13 @@ async function testarWms(): Promise<DiagnosticoWms> {
       ...base,
       ok: false,
       camadaPublicada: null,
-      detalhe: `HTTP ${resposta.status} — ${texto.replace(/\s+/g, " ").slice(0, 200)}`,
+      detalhe: `HTTP ${resposta.status} — ${texto.replace(/\s+/g, " ").slice(0, 160)}`,
     };
   }
 
   // O nome vem com o prefixo do workspace; no capabilities ele pode aparecer
   // com ou sem, então basta a parte depois dos dois pontos.
-  const semPrefixo = wms.camada.split(":").pop() ?? wms.camada;
+  const semPrefixo = camada.split(":").pop() ?? camada;
   const publicada = texto.includes(semPrefixo);
 
   return {
@@ -88,9 +107,18 @@ async function testarWms(): Promise<DiagnosticoWms> {
     ok: publicada,
     camadaPublicada: publicada,
     detalhe: publicada
-      ? `serviço respondeu e publica a camada (${Math.round(texto.length / 1024)} KB de capabilities)`
-      : `serviço respondeu, mas não lista a camada ${wms.camada} entre as publicadas`,
+      ? `respondeu e publica a camada (${Math.round(texto.length / 1024)} KB de capabilities)`
+      : `respondeu, mas não lista a camada entre as publicadas (${Math.round(texto.length / 1024)} KB)`,
   };
+}
+
+async function testarWms(): Promise<{ emUso: DiagnosticoWms; candidatos: DiagnosticoWms[] }> {
+  const wms = zoneamentoWms();
+  const candidatos = await Promise.all(
+    candidatosWms(wms.url).map((url) => testarUmWms(url, wms.camada)),
+  );
+  const emUso = candidatos[0] as DiagnosticoWms;
+  return { emUso, candidatos };
 }
 
 export interface Diagnostico {
@@ -104,6 +132,8 @@ export interface Diagnostico {
   ok: boolean;
   /** O serviço que desenha a camada no mapa, testado à parte. */
   wms: DiagnosticoWms;
+  /** Endereços alternativos sondados, para achar um que funcione. */
+  wmsCandidatos: DiagnosticoWms[];
 }
 
 export async function diagnosticoZoneamento(): Promise<Diagnostico> {
@@ -122,7 +152,7 @@ export async function diagnosticoZoneamento(): Promise<Diagnostico> {
 
   const primeiro = PONTOS[0];
   const { x, y } = paraUtm23S(primeiro.latitude, primeiro.longitude);
-  const wms = await testarWms();
+  const { emUso, candidatos } = await testarWms();
 
   return {
     fonte: fonteZoneamento(),
@@ -131,6 +161,7 @@ export async function diagnosticoZoneamento(): Promise<Diagnostico> {
     exemploUrl: urlConsulta(x, y),
     linhas,
     ok: linhas.some((l) => l.resultado.estado === "encontrada"),
-    wms,
+    wms: emUso,
+    wmsCandidatos: candidatos,
   };
 }
