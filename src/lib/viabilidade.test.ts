@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  calcularViabilidade,
-  precoMaximoParaMargem,
   PREMISSAS_PADRAO,
+  calcularViabilidade,
   normalizarPremissas,
+  paraPremissasFormulario,
+  precoMaximoParaMargem,
+  premissasDoFormulario,
   type EntradaViabilidade,
 } from "./viabilidade";
 
@@ -145,5 +147,29 @@ describe("normalizarPremissas", () => {
 
   it("aceita entrada nula", () => {
     expect(normalizarPremissas(null)).toEqual(PREMISSAS_PADRAO);
+  });
+});
+
+describe("premissas: formulário e cálculo", () => {
+  it("ida e volta não muda nada", () => {
+    // Percentual vira inteiro na tela e fração no cálculo. As duas conversões
+    // vivem juntas justamente para um erro de fator 100 não passar.
+    const voltou = premissasDoFormulario(paraPremissasFormulario(PREMISSAS_PADRAO));
+    expect(voltou).toEqual(PREMISSAS_PADRAO);
+  });
+
+  it("lê percentual do formulário como fração", () => {
+    const p = premissasDoFormulario({ ...paraPremissasFormulario(PREMISSAS_PADRAO), margemAlvoPct: 25 });
+    expect(p.margemAlvoPct).toBe(0.25);
+  });
+
+  it("mantém o que não é percentual na mesma escala", () => {
+    const p = premissasDoFormulario({ ...paraPremissasFormulario(PREMISSAS_PADRAO), precoVendaM2: 17000 });
+    expect(p.precoVendaM2).toBe(17000);
+  });
+
+  it("ignora campo ausente ou inválido e usa o padrão", () => {
+    expect(premissasDoFormulario({}).custoObraM2).toBe(PREMISSAS_PADRAO.custoObraM2);
+    expect(premissasDoFormulario({ custoObraM2: -5 }).custoObraM2).toBe(PREMISSAS_PADRAO.custoObraM2);
   });
 });

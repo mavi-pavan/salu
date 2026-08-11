@@ -39,9 +39,16 @@ export default async function ConfiguracoesPage() {
       <TituloPagina
         titulo="Configurações"
         descricao={
-          config.atualizadoEm
-            ? `Última alteração em ${dataHora(config.atualizadoEm)}`
-            : "Ainda usando os valores padrão"
+          <>
+            {config.atualizadoEm
+              ? `Última alteração em ${dataHora(config.atualizadoEm)}`
+              : "Ainda usando os valores padrão"}
+            {" · "}
+            <span className="text-slate-500">
+              nada aqui filtra a busca — quem decide os anúncios que aparecem é o filtro de zonas,
+              área e preço na tela de buscar
+            </span>
+          </>
         }
       />
 

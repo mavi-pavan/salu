@@ -378,6 +378,24 @@ export function precoMaximoParaMargem(
  * Premissas guardadas como fração (0,20) viram percentual inteiro (20) para
  * preencher o formulário. O caminho inverso mora na server action.
  */
+/**
+ * Volta do formulário para as premissas de cálculo.
+ *
+ * Inverso de `paraPremissasFormulario`: na tela, percentual é número inteiro
+ * ("18" para 18%), no cálculo é fração. As duas funções andam juntas — separar
+ * uma da outra é como um erro de fator 100 entra num app.
+ */
+export function premissasDoFormulario(valores: Record<string, number>): Premissas {
+  const saida = { ...PREMISSAS_PADRAO };
+
+  for (const chave of Object.keys(PREMISSAS_PADRAO) as Array<keyof Premissas>) {
+    const bruto = Number(valores[chave]);
+    if (!Number.isFinite(bruto) || bruto < 0) continue;
+    saida[chave] = PREMISSAS_PERCENTUAIS.includes(chave) ? bruto / 100 : bruto;
+  }
+  return saida;
+}
+
 export function paraPremissasFormulario(premissas: Premissas): Record<string, number> {
   const saida: Record<string, number> = { ...premissas };
   for (const chave of PREMISSAS_PERCENTUAIS) {
