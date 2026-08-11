@@ -300,20 +300,33 @@ GEOSAMPA_WFS_URL="https://.../geoserver/geoportal/wfs"
 
 #### O zoneamento desenhado no mapa
 
-O mesmo serviço da Prefeitura desenha a camada por baixo dos anúncios, no mapa
-dos resultados e no mapa dos terrenos. É o que responde "esse trecho é ZEU?"
-sem clicar em nada: arrasta o mapa e a mancha da zona acompanha.
+A mesma camada da Prefeitura aparece por baixo dos anúncios, no mapa dos
+resultados e no mapa dos terrenos. É o que responde "esse trecho é ZEU?" sem
+clicar em nada: arrasta o mapa e a mancha da zona acompanha. O botão
+**Zoneamento** liga e desliga.
 
-Quem desenha é o servidor deles (WMS), que manda só os azulejos da área
-visível — o navegador não baixa polígono nenhum, e não há arquivo para manter
-atualizado. O botão **Zoneamento** liga e desliga a camada.
+Quem desenha é o app, não a Prefeitura. A primeira versão pedia a imagem pronta
+ao serviço de mapas (WMS) e nunca apareceu nada — nenhum dos endereços
+plausíveis respondeu, e a falha no navegador é muda. A versão atual usa o mesmo
+WFS que confirma a zona de cada anúncio, que está comprovadamente de pé:
 
-Se o serviço não responder, a camada some sozinha em vez de deixar o mapa
-quadriculado de imagens quebradas. Os anúncios continuam lá.
+1. o navegador manda a área visível para `/api/zoneamento` (passa pelo servidor
+   porque o GeoSampa não manda cabeçalho de CORS);
+2. o servidor consulta o WFS em EPSG:31983, o CRS nativo da camada;
+3. os contornos voltam para grau decimal e o navegador traça os polígonos.
 
-Para desenhar só as zonas de eixo em vez do zoneamento inteiro, `GEOSAMPA_WMS_FILTRO`
-aceita um filtro CQL (ex.: `zl_zona LIKE 'ZEU%'`). O nome da coluna varia por
-camada — a tela `/buscar?diagnostico=1` mostra qual sigla a camada devolve.
+Três limites protegem o desenho, e nenhum deles é silencioso — quando algum
+morde, o botão diz:
+
+- **zoom mínimo 14.** Mais longe que isso, o zoneamento da cidade inteira vira
+  uma mancha sem leitura. O botão mostra "aproxime para ver".
+- **2.500 zonas por consulta** e **40 mil vértices por resposta.** Quando não
+  cabe tudo, sai primeiro o que não é eixo, e o botão mostra "parcial".
+- **contornos afinados na resolução do pixel.** Isto vale só para o desenho: a
+  zona de cada anúncio é decidida pela consulta por ponto, sem afinar nada.
+
+A tela `/buscar?diagnostico=1` testa este caminho num trecho conhecido da
+Avenida Paulista e diz quantos polígonos vieram.
 
 #### Alternativa offline: GeoJSON local
 

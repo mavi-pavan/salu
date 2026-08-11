@@ -9,8 +9,11 @@ import "leaflet/dist/leaflet.css";
 
 import { brl, brlCompacto, m2 } from "@/lib/format";
 import { alternarDescarte } from "@/server/actions-busca";
-import { BotaoZoneamento, CamadaZoneamento } from "./camada-zoneamento";
-import type { CamadaWms } from "@/lib/geo/geosampa";
+import {
+  BotaoZoneamento,
+  CamadaZoneamento,
+  type EstadoZoneamento,
+} from "./camada-zoneamento";
 import type { PontoResultado } from "@/server/busca";
 
 /** Centro aproximado da cidade, para o caso de não haver ponto nenhum. */
@@ -141,18 +144,20 @@ export default function MapaResultadosLeaflet({
   pontos,
   semCoordenada,
   editavel,
-  wms,
+  zoneamentoAtivo,
 }: {
   pontos: PontoResultado[];
   semCoordenada: number;
   editavel: boolean;
-  wms: CamadaWms;
+  zoneamentoAtivo: boolean;
 }) {
   const [selecionados, setSelecionados] = useState<string[]>([]);
   const [modoArea, setModoArea] = useState(false);
   // Ligado de saída: a pergunta que traz alguém a esta tela é "isto é ZEU?".
   const [zoneamento, setZoneamento] = useState(true);
-  const [zoneamentoFalhou, setZoneamentoFalhou] = useState(false);
+  const [estadoZoneamento, setEstadoZoneamento] = useState<EstadoZoneamento>({
+    tipo: "carregando",
+  });
 
   // Maior primeiro: o Leaflet desenha na ordem, então os círculos pequenos
   // ficam por cima e continuam clicáveis dentro dos grandes.
@@ -205,8 +210,8 @@ export default function MapaResultadosLeaflet({
           <BotaoZoneamento
             ligado={zoneamento}
             aoAlternar={() => setZoneamento((v) => !v)}
-            indisponivel={!wms.ativo}
-            falhou={zoneamentoFalhou}
+            indisponivel={!zoneamentoAtivo}
+            estado={estadoZoneamento}
           />
           <button
             type="button"
@@ -256,9 +261,8 @@ export default function MapaResultadosLeaflet({
             url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           <CamadaZoneamento
-            wms={wms}
-            visivel={zoneamento}
-            aoFalhar={() => setZoneamentoFalhou(true)}
+            visivel={zoneamento && zoneamentoAtivo}
+            aoMudarEstado={setEstadoZoneamento}
           />
           <Enquadrar pontos={noMapa} />
           <SelecaoPorArea ativo={modoArea} aoSelecionar={selecionarNaCaixa} />
@@ -304,6 +308,10 @@ export default function MapaResultadosLeaflet({
         <span className="flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-full" style={{ background: CORES.verificar }} />
           a verificar
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-violet-500/40 ring-1 ring-violet-600" />
+          zona de eixo no mapa
         </span>
         <span className="text-slate-400">tamanho do círculo = área do lote</span>
       </div>

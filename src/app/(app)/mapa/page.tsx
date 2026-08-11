@@ -4,7 +4,8 @@ import { exigirUsuario } from "@/lib/authz";
 import { numero } from "@/lib/format";
 import { terrenosComCoordenada } from "@/server/queries";
 import { MapaTerrenos } from "@/components/mapa/mapa-terrenos";
-import { zoneamentoWms } from "@/lib/geo/geosampa";
+import { camadaConfigurada, geoSampaAtivo } from "@/lib/geo/geosampa";
+import { ZOOM_MINIMO } from "@/lib/geo/zonas-mapa";
 import { Aviso, Cartao, TituloPagina } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Mapa" };
@@ -13,7 +14,7 @@ export const dynamic = "force-dynamic";
 export default async function MapaPage() {
   await exigirUsuario();
   const terrenos = await terrenosComCoordenada();
-  const wms = zoneamentoWms();
+  const zoneamentoAtivo = geoSampaAtivo();
 
   return (
     <>
@@ -44,7 +45,7 @@ export default async function MapaPage() {
 
       <Cartao className="overflow-hidden">
         <div className="h-[70vh] min-h-[420px] w-full">
-          <MapaTerrenos terrenos={terrenos} wms={wms} />
+          <MapaTerrenos terrenos={terrenos} zoneamentoAtivo={zoneamentoAtivo} />
         </div>
         <div className="flex flex-wrap gap-4 border-t border-slate-200 px-5 py-3 text-xs text-slate-500">
           {terrenos.length ? (
@@ -63,10 +64,17 @@ export default async function MapaPage() {
               </span>
             </>
           ) : null}
-          {wms.ativo ? (
-            <span className="text-slate-400">
-              Zoneamento: camada {wms.camada} do GeoSampa, ligada e desligada no botão do canto.
-            </span>
+          {zoneamentoAtivo ? (
+            <>
+              <span className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-sm bg-violet-500/40 ring-1 ring-violet-600" />{" "}
+                zona de eixo
+              </span>
+              <span className="text-slate-400">
+                Zoneamento: camada {camadaConfigurada()} do GeoSampa, a partir do zoom {ZOOM_MINIMO}
+                . Liga e desliga no botão do canto.
+              </span>
+            </>
           ) : null}
         </div>
       </Cartao>

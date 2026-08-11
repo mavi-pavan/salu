@@ -3,7 +3,6 @@
 import dynamic from "next/dynamic";
 
 import type { TerrenoMapa } from "@/server/queries";
-import type { CamadaWms } from "@/lib/geo/geosampa";
 
 /**
  * O Leaflet toca em `window` na importação, então precisa ficar fora do SSR.
@@ -18,6 +17,12 @@ const MapaLeaflet = dynamic(() => import("./mapa-leaflet"), {
   ),
 });
 
-export function MapaTerrenos({ terrenos, wms }: { terrenos: TerrenoMapa[]; wms: CamadaWms }) {
-  return <MapaLeaflet terrenos={terrenos} wms={wms} />;
+export function MapaTerrenos({
+  terrenos,
+  zoneamentoAtivo,
+}: {
+  terrenos: TerrenoMapa[];
+  zoneamentoAtivo: boolean;
+}) {
+  return <MapaLeaflet terrenos={terrenos} zoneamentoAtivo={zoneamentoAtivo} />;
 }

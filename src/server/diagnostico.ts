@@ -1,13 +1,10 @@
 import "server-only";
 
-import {
-  camadaConfigurada,
-  endpointConfigurado,
-  urlConsulta,
-  zoneamentoWms,
-} from "@/lib/geo/geosampa";
+import { camadaConfigurada, endpointConfigurado, urlConsulta } from "@/lib/geo/geosampa";
 import { paraUtm23S } from "@/lib/geo/projecao";
 import { fonteZoneamento, resolverZona, type ResultadoZona } from "@/lib/geo/zoneamento";
+import { zonasNaArea, type CaixaGraus } from "@/server/zonas-mapa";
+import { ehZonaEixo } from "@/lib/zeu";
 
 /**
  * Teste de conexão com a camada de zoneamento.
@@ -37,88 +34,66 @@ export interface LinhaDiagnostico {
 }
 
 /**
- * O serviço que desenha a camada no mapa é outro (WMS) e pode estar em outro
- * endereço que o das consultas de zona (WFS). Quando ele falha, o navegador só
- * deixa de mostrar as imagens — sem status, sem corpo, sem pista. Este teste
- * roda do servidor, onde a resposta inteira está disponível.
+ * A camada desenhada no mapa, testada pelo mesmo caminho que o navegador usa.
+ *
+ * Antes este teste sondava um serviço de imagem (WMS) que nunca respondeu em
+ * endereço nenhum. Agora o mapa desenha os polígonos ele mesmo, pelo WFS — o
+ * mesmo serviço da coluna acima —, então o que faz sentido perguntar é: pedindo
+ * a área de um trecho conhecido, voltam polígonos?
  */
-export interface DiagnosticoWms {
-  url: string;
-  camada: string;
+export interface DiagnosticoCamadaMapa {
   ok: boolean;
   detalhe: string;
-  /** A camada aparece na lista de camadas publicadas pelo serviço? */
-  camadaPublicada: boolean | null;
+  /** Trecho consultado, para repetir à mão se precisar. */
+  area: string;
+  poligonos: number;
+  deEixo: number;
 }
 
-/**
- * Endereços plausíveis do serviço de imagem, testados em paralelo.
- *
- * O host das consultas se chama `wfs.` e pode não atender WMS; o GeoServer
- * também publica um endpoint global além do por workspace. Em vez de eu
- * adivinhar qual é e mandar alguém testar por tentativa e erro, o app pergunta
- * a todos e diz qual respondeu — foi assim que o nome da camada e o 400 do
- * Serper foram resolvidos.
- */
-function candidatosWms(configurado: string): string[] {
-  const alternativas = [
-    configurado,
-    configurado.replace("://wfs.", "://wms."),
-    configurado.replace(/\/geoserver\/[^/]+\/wms$/, "/geoserver/wms"),
-    configurado.replace("://wfs.", "://wms.").replace(/\/geoserver\/[^/]+\/wms$/, "/geoserver/wms"),
-    "https://geosampa.prefeitura.sp.gov.br/geoserver/geoportal/wms",
-  ];
-  return [...new Set(alternativas)];
-}
+/** Um retângulo em cima da Avenida Paulista: eixo conhecido, área pequena. */
+const AREA_TESTE: CaixaGraus = {
+  sul: -23.567,
+  oeste: -46.663,
+  norte: -23.556,
+  leste: -46.648,
+};
 
-async function testarUmWms(url: string, camada: string): Promise<DiagnosticoWms> {
-  const alvo = new URL(url);
-  alvo.searchParams.set("service", "WMS");
-  alvo.searchParams.set("request", "GetCapabilities");
-  alvo.searchParams.set("version", "1.1.1");
+async function testarCamadaDoMapa(): Promise<DiagnosticoCamadaMapa> {
+  const area = `${AREA_TESTE.sul}, ${AREA_TESTE.oeste} até ${AREA_TESTE.norte}, ${AREA_TESTE.leste}`;
+  const base = { area, poligonos: 0, deEixo: 0 };
 
-  const base = { url, camada };
+  const resposta = await zonasNaArea(AREA_TESTE);
 
-  let resposta: Response;
-  try {
-    resposta = await fetch(alvo, { signal: AbortSignal.timeout(15_000) });
-  } catch (erro) {
-    const causa = erro instanceof Error ? erro.message : String(erro);
-    return { ...base, ok: false, camadaPublicada: null, detalhe: `não respondeu: ${causa}` };
+  if (resposta.estado === "indisponivel") {
+    return { ...base, ok: false, detalhe: resposta.motivo };
+  }
+  if (resposta.estado !== "ok") {
+    return { ...base, ok: false, detalhe: `a consulta devolveu “${resposta.estado}”` };
   }
 
-  const texto = await resposta.text().catch(() => "");
-  if (!resposta.ok) {
+  const deEixo = resposta.zonas.filter((z) => ehZonaEixo(z.zona)).length;
+  const vertices = resposta.zonas.reduce(
+    (soma, z) => soma + z.aneis.reduce((s, anel) => s + anel.length, 0),
+    0,
+  );
+
+  if (!resposta.zonas.length) {
     return {
       ...base,
       ok: false,
-      camadaPublicada: null,
-      detalhe: `HTTP ${resposta.status} — ${texto.replace(/\s+/g, " ").slice(0, 160)}`,
+      detalhe: "o serviço respondeu, mas não veio nenhum polígono nesta área",
     };
   }
 
-  // O nome vem com o prefixo do workspace; no capabilities ele pode aparecer
-  // com ou sem, então basta a parte depois dos dois pontos.
-  const semPrefixo = camada.split(":").pop() ?? camada;
-  const publicada = texto.includes(semPrefixo);
-
   return {
-    ...base,
-    ok: publicada,
-    camadaPublicada: publicada,
-    detalhe: publicada
-      ? `respondeu e publica a camada (${Math.round(texto.length / 1024)} KB de capabilities)`
-      : `respondeu, mas não lista a camada entre as publicadas (${Math.round(texto.length / 1024)} KB)`,
+    ok: true,
+    area,
+    poligonos: resposta.zonas.length,
+    deEixo,
+    detalhe: `${resposta.zonas.length} polígono(s), ${deEixo} de eixo, ${vertices} vértices${
+      resposta.truncado ? " (área com mais zonas do que cabe numa consulta)" : ""
+    }`,
   };
-}
-
-async function testarWms(): Promise<{ emUso: DiagnosticoWms; candidatos: DiagnosticoWms[] }> {
-  const wms = zoneamentoWms();
-  const candidatos = await Promise.all(
-    candidatosWms(wms.url).map((url) => testarUmWms(url, wms.camada)),
-  );
-  const emUso = candidatos[0] as DiagnosticoWms;
-  return { emUso, candidatos };
 }
 
 export interface Diagnostico {
@@ -130,10 +105,8 @@ export interface Diagnostico {
   linhas: LinhaDiagnostico[];
   /** Verde só quando alguma consulta voltou com zona. */
   ok: boolean;
-  /** O serviço que desenha a camada no mapa, testado à parte. */
-  wms: DiagnosticoWms;
-  /** Endereços alternativos sondados, para achar um que funcione. */
-  wmsCandidatos: DiagnosticoWms[];
+  /** A camada desenhada no mapa, testada à parte. */
+  camadaDoMapa: DiagnosticoCamadaMapa;
 }
 
 export async function diagnosticoZoneamento(): Promise<Diagnostico> {
@@ -152,7 +125,7 @@ export async function diagnosticoZoneamento(): Promise<Diagnostico> {
 
   const primeiro = PONTOS[0];
   const { x, y } = paraUtm23S(primeiro.latitude, primeiro.longitude);
-  const { emUso, candidatos } = await testarWms();
+  const camadaDoMapa = await testarCamadaDoMapa();
 
   return {
     fonte: fonteZoneamento(),
@@ -161,7 +134,6 @@ export async function diagnosticoZoneamento(): Promise<Diagnostico> {
     exemploUrl: urlConsulta(x, y),
     linhas,
     ok: linhas.some((l) => l.resultado.estado === "encontrada"),
-    wms: emUso,
-    wmsCandidatos: candidatos,
+    camadaDoMapa,
   };
 }

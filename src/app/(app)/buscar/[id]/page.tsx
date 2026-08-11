@@ -15,7 +15,7 @@ import {
 } from "@/server/busca";
 import { obterConfiguracao } from "@/server/queries";
 import { MapaResultados } from "@/components/mapa/mapa-resultados";
-import { zoneamentoWms } from "@/lib/geo/geosampa";
+import { geoSampaAtivo } from "@/lib/geo/geosampa";
 import type { Premissas } from "@/lib/viabilidade";
 import { alternarDescarte, excluirBusca, repetirBusca } from "@/server/actions-busca";
 import { BotaoEnvio } from "@/components/botao-envio";
@@ -244,7 +244,7 @@ export default async function ResultadosPage({ params }: { params: Promise<{ id:
                 pontos={pontos}
                 semCoordenada={semCoordenada}
                 editavel={editavel}
-                wms={zoneamentoWms()}
+                zoneamentoAtivo={geoSampaAtivo()}
               />
             </CartaoCorpo>
           </Cartao>

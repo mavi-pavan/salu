@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { dentroDeSaoPaulo, paraUtm23S } from "./projecao";
+import { dentroDeSaoPaulo, paraUtm23S, paraWgs84 } from "./projecao";
 
 /**
  * Não há tabela de referência oficial aqui dentro, então os testes checam
@@ -84,6 +84,62 @@ describe("projeção para EPSG:31983", () => {
 
     expect(leste.x).toBeGreaterThan(oeste.x);
     expect(norte.y).toBeGreaterThan(sul.y);
+  });
+});
+
+describe("volta de EPSG:31983 para grau decimal", () => {
+  /**
+   * A ida já está conferida contra uma implementação independente (teste
+   * acima), então usá-la como referência da volta é legítimo: se a volta
+   * errar, o par não fecha. Um erro de sinal, de fuso ou de falso norte
+   * afasta os dois em quilômetros — a tolerância aqui é de milímetros.
+   */
+  const PONTOS: Array<[number, number, string]> = [
+    [-23.5505, -46.6333, "Sé"],
+    [-23.4356, -46.7397, "Perus"],
+    [-23.9608, -46.7, "Marsilac"],
+    [-23.5613, -46.373, "São Mateus"],
+    [-23.5614, -46.6559, "Paulista"],
+  ];
+
+  it("fecha o par ida-e-volta na cidade inteira", () => {
+    for (const [lat, lng, nome] of PONTOS) {
+      const { x, y } = paraUtm23S(lat, lng);
+      const volta = paraWgs84(x, y);
+
+      // 1e-8 grau ≈ 1 mm. O nome entra na mensagem para o teste dizer onde
+      // quebrou sem precisar contar linhas.
+      expect(volta.latitude, nome).toBeCloseTo(lat, 8);
+      expect(volta.longitude, nome).toBeCloseTo(lng, 8);
+    }
+  });
+
+  it("devolve o meridiano central no falso leste", () => {
+    // Recíproca da definição do UTM: x = 500.000 m é longitude -45°.
+    const { latitude, longitude } = paraWgs84(500_000, 7_400_000);
+    expect(longitude).toBeCloseTo(-45, 9);
+    expect(latitude).toBeLessThan(-23);
+    expect(latitude).toBeGreaterThan(-24);
+  });
+
+  it("põe a caixa da cidade em UTM de volta dentro da caixa em graus", () => {
+    // Os quatro cantos do retângulo de São Paulo em metros voltam para dentro
+    // do recorte do município — é o caminho que o mapa percorre para pedir os
+    // polígonos da área visível.
+    const cantos: Array<[number, number]> = [
+      [314_000, 7_346_000],
+      [366_000, 7_346_000],
+      [314_000, 7_414_000],
+      [366_000, 7_414_000],
+    ];
+
+    for (const [x, y] of cantos) {
+      const { latitude, longitude } = paraWgs84(x, y);
+      expect(latitude).toBeLessThan(-23.3);
+      expect(latitude).toBeGreaterThan(-24.1);
+      expect(longitude).toBeLessThan(-46.3);
+      expect(longitude).toBeGreaterThan(-46.9);
+    }
   });
 });
 

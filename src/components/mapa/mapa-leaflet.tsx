@@ -10,8 +10,12 @@ import { STATUS_ROTULO, type StatusPipeline } from "@/lib/enums";
 import { faixaScore } from "@/lib/scoring";
 import { brlCompacto, m2 } from "@/lib/format";
 import type { TerrenoMapa } from "@/server/queries";
-import type { CamadaWms } from "@/lib/geo/geosampa";
-import { BotaoZoneamento, CamadaZoneamento } from "./camada-zoneamento";
+import { ZOOM_MINIMO } from "@/lib/geo/zonas-mapa";
+import {
+  BotaoZoneamento,
+  CamadaZoneamento,
+  type EstadoZoneamento,
+} from "./camada-zoneamento";
 
 /** Centro aproximado da cidade, usado quando não há terreno com coordenada. */
 const CENTRO_SP: [number, number] = [-23.5629, -46.6544];
@@ -25,13 +29,15 @@ const CORES: Record<string, string> = {
 
 export default function MapaLeaflet({
   terrenos,
-  wms,
+  zoneamentoAtivo,
 }: {
   terrenos: TerrenoMapa[];
-  wms: CamadaWms;
+  zoneamentoAtivo: boolean;
 }) {
   const [zoneamento, setZoneamento] = useState(true);
-  const [zoneamentoFalhou, setZoneamentoFalhou] = useState(false);
+  const [estadoZoneamento, setEstadoZoneamento] = useState<EstadoZoneamento>({
+    tipo: "carregando",
+  });
   const primeiro = terrenos[0];
   const centro: [number, number] = primeiro
     ? [primeiro.latitude, primeiro.longitude]
@@ -45,13 +51,15 @@ export default function MapaLeaflet({
         <BotaoZoneamento
           ligado={zoneamento}
           aoAlternar={() => setZoneamento((v) => !v)}
-          indisponivel={!wms.ativo}
-          falhou={zoneamentoFalhou}
+          indisponivel={!zoneamentoAtivo}
+          estado={estadoZoneamento}
         />
       </div>
       <MapContainer
       center={centro}
-      zoom={terrenos.length ? 12 : 11}
+      /* Sem terreno, a página serve só para olhar o zoneamento — então já abre
+         no zoom em que ele aparece, em vez de pedir que a pessoa se aproxime. */
+      zoom={terrenos.length ? 12 : ZOOM_MINIMO}
       scrollWheelZoom
       style={{ height: "100%", width: "100%" }}
     >
@@ -60,10 +68,9 @@ export default function MapaLeaflet({
         url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       <CamadaZoneamento
-            wms={wms}
-            visivel={zoneamento}
-            aoFalhar={() => setZoneamentoFalhou(true)}
-          />
+        visivel={zoneamento && zoneamentoAtivo}
+        aoMudarEstado={setEstadoZoneamento}
+      />
 
       {terrenos.map((t) => {
         const faixa = t.scoreTotal != null ? faixaScore(t.scoreTotal).faixa : "fraco";

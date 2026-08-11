@@ -66,35 +66,15 @@ export function geoSampaAtivo(): boolean {
   return valor !== "off" && valor !== "0" && valor !== "false";
 }
 
-/**
- * A mesma camada, servida como imagem para desenhar por baixo dos lotes.
- *
- * O GeoServer que responde o WFS responde WMS no endereço irmão, e é o WMS que
- * interessa no mapa: em vez de baixar os polígonos da cidade inteira para o
- * navegador, a Prefeitura devolve azulejos prontos conforme se arrasta o mapa.
- * Nada trafega além do que está na tela.
- */
-export interface CamadaWms {
-  url: string;
-  camada: string;
-  /** CQL opcional, para mostrar só as zonas de eixo em vez do zoneamento todo. */
-  filtro: string | null;
-  ativo: boolean;
+/** Retângulo em metros, no CRS nativo da camada. */
+export interface CaixaUtm {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
 }
 
-export function zoneamentoWms(): CamadaWms {
-  const irmao = endpointConfigurado().replace(/\/wfs(\?.*)?$/i, "/wms");
-  const url = (process.env.GEOSAMPA_WMS_URL ?? "").trim() || irmao;
-  const camada = (process.env.GEOSAMPA_WMS_CAMADA ?? "").trim() || camadaConfigurada();
-  return {
-    url,
-    camada,
-    filtro: (process.env.GEOSAMPA_WMS_FILTRO ?? "").trim() || null,
-    ativo: geoSampaAtivo(),
-  };
-}
-
-export function urlConsulta(x: number, y: number, raio = RAIO_M): string {
+function urlDaCaixa(caixa: CaixaUtm, quantas: number): string {
   const url = new URL(endpointConfigurado());
   url.searchParams.set("service", "WFS");
   url.searchParams.set("version", "2.0.0");
@@ -102,12 +82,30 @@ export function urlConsulta(x: number, y: number, raio = RAIO_M): string {
   url.searchParams.set("typeNames", camadaConfigurada());
   url.searchParams.set("outputFormat", "application/json");
   url.searchParams.set("srsName", "EPSG:31983");
-  url.searchParams.set("count", String(MAX_FEICOES));
+  url.searchParams.set("count", String(quantas));
   url.searchParams.set(
     "bbox",
-    `${(x - raio).toFixed(2)},${(y - raio).toFixed(2)},${(x + raio).toFixed(2)},${(y + raio).toFixed(2)},EPSG:31983`,
+    [
+      caixa.minX.toFixed(2),
+      caixa.minY.toFixed(2),
+      caixa.maxX.toFixed(2),
+      caixa.maxY.toFixed(2),
+      "EPSG:31983",
+    ].join(","),
   );
   return url.toString();
+}
+
+export function urlConsulta(x: number, y: number, raio = RAIO_M): string {
+  return urlDaCaixa(
+    { minX: x - raio, minY: y - raio, maxX: x + raio, maxY: y + raio },
+    MAX_FEICOES,
+  );
+}
+
+/** A mesma consulta, para a área visível do mapa em vez de um ponto. */
+export function urlDaArea(caixa: CaixaUtm, quantas: number): string {
+  return urlDaCaixa(caixa, quantas);
 }
 
 // ---------------------------------------------------------------------------
@@ -178,7 +176,7 @@ export function siglaDaFeature(propriedades: Record<string, unknown> | null | un
   return null;
 }
 
-interface FeatureBruta {
+export interface FeatureBruta {
   properties?: Record<string, unknown> | null;
   geometry?: GeometriaGeoJSON | null;
 }
@@ -266,6 +264,44 @@ async function motivoDaResposta(resposta: Response): Promise<string> {
   return `GeoSampa respondeu ${resposta.status}${detalhe}`;
 }
 
+export type Recebido =
+  | { ok: true; dados: unknown }
+  | { ok: false; motivo: string };
+
+/**
+ * Uma requisição ao WFS, com todos os jeitos conhecidos de dar errado tratados
+ * como erro explícito.
+ *
+ * O mais traiçoeiro está no fim: o GeoServer responde erro em XML com status
+ * 200 quando a camada ou um parâmetro não existem. Sem o ramo do JSON inválido,
+ * isso viraria "nenhuma feição" — e o app afirmaria com todas as letras que o
+ * lote não está em zona nenhuma.
+ */
+async function pedirAoGeoSampa(url: string, timeoutMs = TIMEOUT_MS): Promise<Recebido> {
+  let resposta: Response;
+  try {
+    resposta = await fetch(url, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (erro) {
+    const causa = erro instanceof Error ? erro.message : String(erro);
+    return { ok: false, motivo: `não foi possível falar com o GeoSampa: ${causa}` };
+  }
+
+  if (!resposta.ok) return { ok: false, motivo: await motivoDaResposta(resposta) };
+
+  const texto = await resposta.text();
+  try {
+    return { ok: true, dados: JSON.parse(texto) };
+  } catch {
+    return {
+      ok: false,
+      motivo: `resposta do GeoSampa não é JSON — ${texto.replace(/\s+/g, " ").slice(0, 300)}`,
+    };
+  }
+}
+
 export async function zonaNoGeoSampa(
   latitude: number,
   longitude: number,
@@ -280,36 +316,37 @@ export async function zonaNoGeoSampa(
   const emCache = cache.get(chave);
   if (emCache) return emCache;
 
-  let resposta: Response;
-  try {
-    resposta = await fetch(urlConsulta(x, y), {
-      headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-  } catch (erro) {
-    const causa = erro instanceof Error ? erro.message : String(erro);
-    return { estado: "indisponivel", motivo: `não foi possível falar com o GeoSampa: ${causa}` };
-  }
+  const recebido = await pedirAoGeoSampa(urlConsulta(x, y));
+  if (!recebido.ok) return { estado: "indisponivel", motivo: recebido.motivo };
 
-  if (!resposta.ok) {
-    return { estado: "indisponivel", motivo: await motivoDaResposta(resposta) };
-  }
-
-  // O GeoServer devolve erro em XML com status 200 quando a camada ou o
-  // parâmetro não existem. Sem este ramo, isso viraria "fora" — ou seja, o app
-  // afirmaria com todas as letras que o lote não está em zona nenhuma.
-  const texto = await resposta.text();
-  let json: unknown;
-  try {
-    json = JSON.parse(texto);
-  } catch {
-    return {
-      estado: "indisponivel",
-      motivo: `resposta do GeoSampa não é JSON — ${texto.replace(/\s+/g, " ").slice(0, 300)}`,
-    };
-  }
-
-  const resultado = zonaDaColecao(json, x, y);
+  const resultado = zonaDaColecao(recebido.dados, x, y);
   if (resultado.estado === "indisponivel") return resultado;
   return guardar(chave, resultado);
+}
+
+export type FeicoesDaArea =
+  | { estado: "ok"; feicoes: FeatureBruta[] }
+  | { estado: "indisponivel"; motivo: string };
+
+/**
+ * As feições de zoneamento que tocam um retângulo — o que o mapa precisa para
+ * desenhar a área visível.
+ *
+ * Sem cache: ao contrário da consulta por ponto, cada caixa é diferente da
+ * anterior (o mapa se move continuamente), então guardar só ocuparia memória.
+ * O timeout é mais curto porque aqui alguém está olhando a tela esperando.
+ */
+export async function feicoesNaArea(caixa: CaixaUtm, quantas: number): Promise<FeicoesDaArea> {
+  if (!geoSampaAtivo()) {
+    return { estado: "indisponivel", motivo: "consulta ao GeoSampa desativada (GEOSAMPA_WFS=off)" };
+  }
+
+  const recebido = await pedirAoGeoSampa(urlDaArea(caixa, quantas), 12_000);
+  if (!recebido.ok) return { estado: "indisponivel", motivo: recebido.motivo };
+
+  const colecao = recebido.dados as { features?: FeatureBruta[] } | null;
+  if (!Array.isArray(colecao?.features)) {
+    return { estado: "indisponivel", motivo: "resposta do GeoSampa sem lista de feições" };
+  }
+  return { estado: "ok", feicoes: colecao.features };
 }

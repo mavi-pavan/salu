@@ -69,6 +69,57 @@ export function dentroDeSaoPaulo(latitude: number, longitude: number): boolean {
   );
 }
 
+/**
+ * Volta de metros (EPSG:31983) para grau decimal.
+ *
+ * Necessária porque o GeoSampa devolve os polígonos no CRS nativo dele, e o
+ * mapa desenha em latitude/longitude. Converter aqui, no servidor, evita pedir
+ * ao serviço uma reprojeção em EPSG:4326 — onde a ordem dos eixos é ambígua e
+ * o erro seria silencioso (ver o comentário no topo deste arquivo).
+ *
+ * Série inversa de Transversa de Mercator, USGS PP 1395, eqs. 8-17 a 8-25.
+ */
+export function paraWgs84(x: number, y: number): { latitude: number; longitude: number } {
+  const norte = y - FALSO_NORTE;
+  const m = norte / K0;
+
+  const e1 = (1 - Math.sqrt(1 - E2)) / (1 + Math.sqrt(1 - E2));
+  const mu = m / (A * (1 - E2 / 4 - (3 * E2 ** 2) / 64 - (5 * E2 ** 3) / 256));
+
+  const fi1 =
+    mu +
+    ((3 * e1) / 2 - (27 * e1 ** 3) / 32) * Math.sin(2 * mu) +
+    ((21 * e1 ** 2) / 16 - (55 * e1 ** 4) / 32) * Math.sin(4 * mu) +
+    ((151 * e1 ** 3) / 96) * Math.sin(6 * mu) +
+    ((1097 * e1 ** 4) / 512) * Math.sin(8 * mu);
+
+  const senFi1 = Math.sin(fi1);
+  const cosFi1 = Math.cos(fi1);
+  const tanFi1 = Math.tan(fi1);
+
+  const c1 = EP2 * cosFi1 * cosFi1;
+  const t1 = tanFi1 * tanFi1;
+  const n1 = A / Math.sqrt(1 - E2 * senFi1 * senFi1);
+  const r1 = (A * (1 - E2)) / (1 - E2 * senFi1 * senFi1) ** 1.5;
+  const d = (x - FALSO_LESTE) / (n1 * K0);
+
+  const fi =
+    fi1 -
+    ((n1 * tanFi1) / r1) *
+      ((d * d) / 2 -
+        ((5 + 3 * t1 + 10 * c1 - 4 * c1 * c1 - 9 * EP2) * d ** 4) / 24 +
+        ((61 + 90 * t1 + 298 * c1 + 45 * t1 * t1 - 252 * EP2 - 3 * c1 * c1) * d ** 6) / 720);
+
+  const lambda =
+    LAMBDA0 +
+    (d -
+      ((1 + 2 * t1 + c1) * d ** 3) / 6 +
+      ((5 - 2 * c1 + 28 * t1 - 3 * c1 * c1 + 8 * EP2 + 24 * t1 * t1) * d ** 5) / 120) /
+      cosFi1;
+
+  return { latitude: (fi * 180) / Math.PI, longitude: (lambda * 180) / Math.PI };
+}
+
 /** Converte grau decimal (lat, lng) para metros no EPSG:31983. */
 export function paraUtm23S(latitude: number, longitude: number): PontoUtm {
   const fi = (latitude * Math.PI) / 180;

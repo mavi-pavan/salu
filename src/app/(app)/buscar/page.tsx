@@ -254,42 +254,22 @@ async function PainelDiagnostico() {
 
         <div
           className={`rounded-lg px-4 py-3 text-xs ${
-            d.wms.ok ? "bg-slate-50 text-slate-500" : "bg-amber-50 text-amber-800"
+            d.camadaDoMapa.ok ? "bg-slate-50 text-slate-500" : "bg-amber-50 text-amber-800"
           }`}
         >
-          <p className="font-semibold">
-            Camada desenhada no mapa (serviço de imagem, separado do de consulta)
+          <p className="font-semibold">Camada desenhada no mapa</p>
+          <p className="mt-1">
+            {d.camadaDoMapa.ok ? "Funcionando: " : "Com problema: "}
+            {d.camadaDoMapa.detalhe}
           </p>
           <p className="mt-1">
-            {d.wms.ok ? "Funcionando: " : "Com problema: "}
-            {d.wms.detalhe}
+            Trecho testado: Avenida Paulista ({d.camadaDoMapa.area}).
           </p>
-          <p className="mt-1 break-all">
-            <code>{d.wms.url}</code> · camada <code>{d.wms.camada}</code>
-          </p>
-          {!d.wms.ok ? (
-            <>
-              <p className="mt-2 font-semibold">Endereços testados:</p>
-              <ul className="mt-1 flex flex-col gap-1">
-                {d.wmsCandidatos.map((c) => (
-                  <li key={c.url} className="break-all">
-                    {c.ok ? "✓" : "✗"} <code>{c.url}</code> — {c.detalhe}
-                  </li>
-                ))}
-              </ul>
-              {d.wmsCandidatos.some((c) => c.ok) ? (
-                <p className="mt-2 font-semibold">
-                  Funciona: coloque{" "}
-                  <code>GEOSAMPA_WMS_URL = {d.wmsCandidatos.find((c) => c.ok)?.url}</code> nas
-                  variáveis de ambiente da Vercel e faça o redeploy.
-                </p>
-              ) : (
-                <p className="mt-2">
-                  Nenhum endereço respondeu. A camada no mapa é conforto visual — a confirmação de
-                  zona de cada anúncio usa outro serviço, que continua funcionando.
-                </p>
-              )}
-            </>
+          {!d.camadaDoMapa.ok ? (
+            <p className="mt-2">
+              O mapa fica sem a mancha do zoneamento. A confirmação de zona de cada anúncio usa a
+              consulta por ponto, testada na tabela acima, e não depende disto.
+            </p>
           ) : null}
         </div>
 

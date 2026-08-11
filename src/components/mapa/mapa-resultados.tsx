@@ -3,7 +3,6 @@
 import dynamic from "next/dynamic";
 
 import type { PontoResultado } from "@/server/busca";
-import type { CamadaWms } from "@/lib/geo/geosampa";
 
 /**
  * O Leaflet toca em `window` na importação, então precisa ficar fora do SSR.
@@ -22,19 +21,19 @@ export function MapaResultados({
   pontos,
   semCoordenada,
   editavel,
-  wms,
+  zoneamentoAtivo,
 }: {
   pontos: PontoResultado[];
   semCoordenada: number;
   editavel: boolean;
-  wms: CamadaWms;
+  zoneamentoAtivo: boolean;
 }) {
   return (
     <MapaLeaflet
       pontos={pontos}
       semCoordenada={semCoordenada}
       editavel={editavel}
-      wms={wms}
+      zoneamentoAtivo={zoneamentoAtivo}
     />
   );
 }
