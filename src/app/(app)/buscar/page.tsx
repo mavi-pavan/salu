@@ -252,6 +252,30 @@ async function PainelDiagnostico() {
           </table>
         </div>
 
+        <div
+          className={`rounded-lg px-4 py-3 text-xs ${
+            d.wms.ok ? "bg-slate-50 text-slate-500" : "bg-amber-50 text-amber-800"
+          }`}
+        >
+          <p className="font-semibold">
+            Camada desenhada no mapa (serviço de imagem, separado do de consulta)
+          </p>
+          <p className="mt-1">
+            {d.wms.ok ? "Funcionando: " : "Com problema: "}
+            {d.wms.detalhe}
+          </p>
+          <p className="mt-1 break-all">
+            <code>{d.wms.url}</code> · camada <code>{d.wms.camada}</code>
+          </p>
+          {!d.wms.ok ? (
+            <p className="mt-1.5">
+              Ajuste <code>GEOSAMPA_WMS_URL</code> ou <code>GEOSAMPA_WMS_CAMADA</code> nas
+              variáveis de ambiente. A confirmação de zona de cada anúncio não depende deste
+              serviço e continua funcionando.
+            </p>
+          ) : null}
+        </div>
+
         <div className="rounded-lg bg-slate-50 px-4 py-3 text-xs text-slate-500">
           <p>
             Camada <code>{d.camada}</code> em <code>{d.endpoint}</code>.

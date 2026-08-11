@@ -31,6 +31,7 @@ export default function MapaLeaflet({
   wms: CamadaWms;
 }) {
   const [zoneamento, setZoneamento] = useState(true);
+  const [zoneamentoFalhou, setZoneamentoFalhou] = useState(false);
   const primeiro = terrenos[0];
   const centro: [number, number] = primeiro
     ? [primeiro.latitude, primeiro.longitude]
@@ -45,6 +46,7 @@ export default function MapaLeaflet({
           ligado={zoneamento}
           aoAlternar={() => setZoneamento((v) => !v)}
           indisponivel={!wms.ativo}
+          falhou={zoneamentoFalhou}
         />
       </div>
       <MapContainer
@@ -57,7 +59,11 @@ export default function MapaLeaflet({
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      <CamadaZoneamento wms={wms} visivel={zoneamento} />
+      <CamadaZoneamento
+            wms={wms}
+            visivel={zoneamento}
+            aoFalhar={() => setZoneamentoFalhou(true)}
+          />
 
       {terrenos.map((t) => {
         const faixa = t.scoreTotal != null ? faixaScore(t.scoreTotal).faixa : "fraco";

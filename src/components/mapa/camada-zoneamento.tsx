@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { WMSTileLayer } from "react-leaflet";
 
 import type { CamadaWms } from "@/lib/geo/geosampa";
@@ -15,10 +14,16 @@ import type { CamadaWms } from "@/lib/geo/geosampa";
  * A opacidade é baixa de propósito: a camada é pano de fundo para os círculos
  * dos anúncios, não o assunto principal da tela.
  */
-export function CamadaZoneamento({ wms, visivel }: { wms: CamadaWms; visivel: boolean }) {
-  const [falhou, setFalhou] = useState(false);
-
-  if (!visivel || !wms.ativo || falhou) return null;
+export function CamadaZoneamento({
+  wms,
+  visivel,
+  aoFalhar,
+}: {
+  wms: CamadaWms;
+  visivel: boolean;
+  aoFalhar: () => void;
+}) {
+  if (!visivel || !wms.ativo) return null;
 
   return (
     <WMSTileLayer
@@ -33,15 +38,16 @@ export function CamadaZoneamento({ wms, visivel }: { wms: CamadaWms; visivel: bo
       {...(wms.filtro ? { CQL_FILTER: wms.filtro } : {})}
       eventHandlers={{
         // Sem isto, um serviço fora do ar vira um mapa quadriculado de imagens
-        // quebradas e ninguém entende o que aconteceu. Melhor sumir e dizer.
-        tileerror: () => setFalhou(true),
+        // quebradas. Mas sumir calado é pior ainda: quem clicou no botão fica
+        // achando que o botão não funciona. Quem avisa é quem chamou.
+        tileerror: aoFalhar,
       }}
     />
   );
 }
 
 /**
- * Botão de ligar/desligar a camada, com o aviso de indisponível no mesmo lugar.
+ * Botão de ligar/desligar a camada, com o estado de falha no mesmo lugar.
  * Separado do componente de tiles porque aquele vive dentro do MapContainer e
  * este mora na barra de controles, fora dele.
  */
@@ -49,12 +55,25 @@ export function BotaoZoneamento({
   ligado,
   aoAlternar,
   indisponivel,
+  falhou,
 }: {
   ligado: boolean;
   aoAlternar: () => void;
   indisponivel: boolean;
+  falhou: boolean;
 }) {
   if (indisponivel) return null;
+
+  if (falhou) {
+    return (
+      <span
+        className="rounded-lg bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800"
+        title="O serviço de mapas da Prefeitura não devolveu as imagens da camada. O mapa e os anúncios continuam funcionando; a confirmação de zona de cada anúncio é feita por outro serviço e não depende deste."
+      >
+        Zoneamento indisponível
+      </span>
+    );
+  }
 
   return (
     <button

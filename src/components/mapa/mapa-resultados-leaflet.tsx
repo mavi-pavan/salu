@@ -152,6 +152,7 @@ export default function MapaResultadosLeaflet({
   const [modoArea, setModoArea] = useState(false);
   // Ligado de saída: a pergunta que traz alguém a esta tela é "isto é ZEU?".
   const [zoneamento, setZoneamento] = useState(true);
+  const [zoneamentoFalhou, setZoneamentoFalhou] = useState(false);
 
   // Maior primeiro: o Leaflet desenha na ordem, então os círculos pequenos
   // ficam por cima e continuam clicáveis dentro dos grandes.
@@ -205,6 +206,7 @@ export default function MapaResultadosLeaflet({
             ligado={zoneamento}
             aoAlternar={() => setZoneamento((v) => !v)}
             indisponivel={!wms.ativo}
+            falhou={zoneamentoFalhou}
           />
           <button
             type="button"
@@ -253,7 +255,11 @@ export default function MapaResultadosLeaflet({
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
-          <CamadaZoneamento wms={wms} visivel={zoneamento} />
+          <CamadaZoneamento
+            wms={wms}
+            visivel={zoneamento}
+            aoFalhar={() => setZoneamentoFalhou(true)}
+          />
           <Enquadrar pontos={noMapa} />
           <SelecaoPorArea ativo={modoArea} aoSelecionar={selecionarNaCaixa} />
 
